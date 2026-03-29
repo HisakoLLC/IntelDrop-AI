@@ -1,0 +1,6 @@
+# Exclude Supabase Edge Functions from ESLint
+supabase/
+node_modules/
+.next/
+dist/
+build/

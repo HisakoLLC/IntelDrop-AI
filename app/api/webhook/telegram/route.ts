@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { encryptData, hashData } from '@/lib/encryption';
 import { generateAlias } from '@/lib/alias';
 import { supabaseAdmin } from '@/lib/supabase';
-import { analyzeTip, transcribeAudio, analyzeImageTip, generateFollowUpQuestion } from '@/lib/gemini';
+import { analyzeTip, transcribeAudio, analyzeImageTip } from '@/lib/gemini';
 import sharp from 'sharp';
 
 interface SessionMessage {
@@ -71,17 +71,6 @@ async function sendTelegramMessage(chatId: string, text: string): Promise<number
   const data = await res.json();
   if (data.ok) return data.result.message_id;
   return null;
-}
-
-// Helper: Typing Indicator
-async function sendTypingAction(chatId: string) {
-  const telegramToken = process.env.TELEGRAM_BOT_TOKEN;
-  if (!telegramToken) return;
-  await fetch(`https://api.telegram.org/bot${telegramToken}/sendChatAction`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, action: 'typing' })
-  });
 }
 
 // Helper: Delete Msg
