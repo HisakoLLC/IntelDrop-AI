@@ -87,8 +87,8 @@ serve(async (req) => {
     if (!isValid) return new Response("Invalid Signature", { status: 401 });
   }
 
-  // 2. Init Supabase
-  const SUPABASE_URL = Deno.env.get("NEXT_PUBLIC_SUPABASE_URL")!;
+  // 2. Init Supabase (Using built-in system variables)
+  const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
   const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
@@ -192,7 +192,7 @@ serve(async (req) => {
   // 5. RECURSIVE HEARTBEAT (The 5-Second Loop)
   // This sends a message back to itself via QStash with a 5s delay.
   const QSTASH_TOKEN = Deno.env.get("QSTASH_TOKEN");
-  const FUNCTION_URL = `https://${Deno.env.get("NEXT_PUBLIC_SUPABASE_URL")?.split('//')[1]}/functions/v1/process-pending-messages`;
+  const FUNCTION_URL = `https://${Deno.env.get("SUPABASE_URL")?.split('//')[1]}/functions/v1/process-pending-messages`;
 
   if (QSTASH_TOKEN) {
     try {
