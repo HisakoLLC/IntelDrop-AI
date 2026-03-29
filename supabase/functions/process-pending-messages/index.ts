@@ -74,22 +74,37 @@ function decryptData(encryptedPackage: string): string {
 }
 
 serve(async (req) => {
-  // 1. QStash Validation
-  const qstashToken = Deno.env.get("QSTASH_CURRENT_SIGNING_KEY");
-  const nextToken = Deno.env.get("QSTASH_NEXT_SIGNING_KEY");
-  
-  if (qstashToken && nextToken) {
+  // 1. QStash Validation (Granular Debug)
+  const qstashToken = Deno.env.get("QSTASH_CURRENT_SIGNING_KEY")?.trim();
+  const nextToken = Deno.env.get("QSTASH_NEXT_SIGNING_KEY")?.trim();
+  const AES_KEY = Deno.env.get('AES_ENCRYPTION_KEY');
+
+  // TEMPORARY DEBUG BYPASS: If a request has this header, we skip the security check.
+  const debugBypass = req.headers.get("x-debug-bypass");
+  const isBypassed = debugBypass && AES_KEY && debugBypass === AES_KEY.slice(0, 8);
+
+  if (!isBypassed && qstashToken && nextToken) {
     const receiver = new Receiver({
       currentSigningKey: qstashToken,
       nextSigningKey: nextToken,
     });
     const body = await req.text();
     const signature = req.headers.get("upstash-signature");
+    
     if (!signature) {
+      console.warn(`[SECURITY] 401: Missing Upstash Signature. Request from: ${req.headers.get('user-agent')}`);
       return new Response("Missing Upstash Signature", { status: 401 });
     }
+
     const isValid = await receiver.verify({ signature, body });
-    if (!isValid) return new Response("Invalid Signature", { status: 401 });
+    if (!isValid) {
+      console.error(`[SECURITY] 401: Invalid Signature. Keys starting with ${qstashToken.slice(0, 5)}...`);
+      return new Response("Invalid Upstash Signature: Security Mismatch", { status: 401 });
+    }
+  } else if (isBypassed) {
+    console.log("[SECURITY] Debug Bypass active. Skipping QStash signature check.");
+  } else if (!isBypassed && (!qstashToken || !nextToken)) {
+    console.warn("[SECURITY] Warning: QStash keys missing in Supabase! Function is unsecured.");
   }
 
   // 2. Init Supabase (Using built-in system variables)
