@@ -17,7 +17,7 @@ export async function createClient() {
             cookiesToSet.forEach(({ name, value, options }) => {
               cookieStore.set(name, value, options);
             });
-          } catch (_error) {
+          } catch {
             // Ignored specifically for Server Components which can't set cookies natively.
             // Handled dynamically by middleware loop.
           }

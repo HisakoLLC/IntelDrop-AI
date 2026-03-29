@@ -5,6 +5,13 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { analyzeTip, transcribeAudio, analyzeImageTip, generateFollowUpQuestion } from '@/lib/gemini';
 import sharp from 'sharp';
 
+interface SessionMessage {
+  role: string;
+  content: string;
+  message_id: number;
+  media_url?: string | null;
+}
+
 const DONE_TRIGGERS = ["done", "i'm done", "that's all", "naisha", "nimemaliza", "ok. i'm done", "finished"];
 
 // Helper: Extract text from Voice
@@ -204,13 +211,13 @@ export async function POST(req: Request) {
       if (isDoneTrigger) {
         // WIPE SEQUENCE
         const compiledText = messagesArray
-          .filter((m: any) => m.role === 'user')
-          .map((m: any) => m.content)
+          .filter((m: SessionMessage) => m.role === 'user')
+          .map((m: SessionMessage) => m.content)
           .join('\n');
           
         const mediaUrls = messagesArray
-          .filter((m: any) => m.media_url)
-          .map((m: any) => m.media_url);
+          .filter((m: SessionMessage) => m.media_url)
+          .map((m: SessionMessage) => m.media_url);
         const finalMediaUrl = mediaUrls.length > 0 ? mediaUrls[0] : null;
 
         // Route entire session block back into intelligence parser
