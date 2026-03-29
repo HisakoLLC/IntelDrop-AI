@@ -2,7 +2,12 @@
 
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 
-export default function InboxVolumeChart({ data }: { data: any[] }) {
+interface VolumeData {
+  date: string
+  count: number
+}
+
+export default function InboxVolumeChart({ data }: { data: VolumeData[] }) {
   if (!data || data.length === 0) return <div className="p-4 text-sm font-bold opacity-50 uppercase tracking-widest text-black">NO TELEMETRY AVAILABLE</div>;
 
   return (

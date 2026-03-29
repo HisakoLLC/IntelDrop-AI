@@ -1,3 +1,4 @@
+import Image from 'next/image'
 import SignOutButton from '@/components/auth/SignOutButton'
 
 type TopbarProps = {
@@ -14,10 +15,13 @@ export default function Topbar({ clientName = 'UNREGISTERED ENTITY', clientLogoU
         </span>
         
         {clientLogoUrl ? (
-          <img 
+          <Image 
             src={clientLogoUrl} 
             alt={clientName || 'Client Entity Logo'} 
-            className="h-10 w-auto object-contain max-w-[250px]"
+            width={250}
+            height={40}
+            className="h-10 w-auto object-contain"
+            unoptimized
           />
         ) : (
           <h1 className="text-xl font-bold tracking-widest uppercase">{clientName}</h1>

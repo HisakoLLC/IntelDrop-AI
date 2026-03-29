@@ -36,9 +36,10 @@ export default function ReplyModal({ alias, isOpen, onClose }: ReplyModalProps) 
         setStatus('idle')
         onClose()
       }, 2000)
-    } catch(err: any) {
+    } catch(err: unknown) {
       console.error(err)
-      setErrorText(err.message || 'System Dispatch Error')
+      const message = err instanceof Error ? err.message : 'System Dispatch Error'
+      setErrorText(message)
       setStatus('error')
     }
   }

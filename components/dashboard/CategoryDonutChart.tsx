@@ -2,7 +2,13 @@
 
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
 
-export default function CategoryDonutChart({ data }: { data: any[] }) {
+interface DonutData {
+  name: string
+  value: number
+  fill: string
+}
+
+export default function CategoryDonutChart({ data }: { data: DonutData[] }) {
   if (!data || data.length === 0) return <div className="p-4 text-sm font-bold opacity-50 uppercase tracking-widest text-black">NO CATEGORICAL SPREAD DETECTED</div>;
 
   return (
