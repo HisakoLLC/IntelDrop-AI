@@ -1,0 +1,8 @@
+﻿app/api/webhook/telegram/route.ts(26,3): error TS2322: Type 'string | undefined' is not assignable to type 'string | null'.
+  Type 'undefined' is not assignable to type 'string | null'.
+app/api/webhook/telegram/route.ts(52,12): error TS2322: Type 'string | undefined' is not assignable to type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+app/api/webhook/telegram/route.ts(195,26): error TS2345: Argument of type '{ role: string; content: string; message_id: number; }' is not assignable to parameter of type '{ role: string; content: any; message_id: any; media_url: string | null; }'.
+  Property 'media_url' is missing in type '{ role: string; content: string; message_id: number; }' but required in type '{ role: string; content: any; message_id: any; media_url: string | null; }'.
+app/api/webhook/telegram/route.ts(251,60): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.

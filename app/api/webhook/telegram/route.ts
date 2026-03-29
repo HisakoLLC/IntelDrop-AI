@@ -2,204 +2,109 @@ import { NextResponse } from 'next/server';
 import { encryptData, hashData } from '@/lib/encryption';
 import { generateAlias } from '@/lib/alias';
 import { supabaseAdmin } from '@/lib/supabase';
-import { analyzeTip, transcribeAudio, analyzeImageTip } from '@/lib/gemini';
+import { analyzeTip, transcribeAudio, analyzeImageTip, generateFollowUpQuestion } from '@/lib/gemini';
 import sharp from 'sharp';
 
-// Helper: Telegram Auto-Delete and Confirmation
-async function cleanupAndNotify(chatId: string, messageId: number) {
+const DONE_TRIGGERS = ["done", "i'm done", "that's all", "naisha", "nimemaliza", "ok. i'm done", "finished"];
+
+// Helper: Extract text from Voice
+async function extractVoiceText(fileId: string): Promise<string | null> {
+  const telegramToken = process.env.TELEGRAM_BOT_TOKEN;
+  if (!telegramToken) return null;
+  const configRes = await fetch(`https://api.telegram.org/bot${telegramToken}/getFile?file_id=${fileId}`);
+  const configData = await configRes.json();
+  if (!configData.ok) return null;
+  
+  const filePath = configData.result.file_path;
+  const downloadRes = await fetch(`https://api.telegram.org/file/bot${telegramToken}/${filePath}`);
+  const arrayBuffer = await downloadRes.arrayBuffer();
+  
+  let buffer: Buffer | null = Buffer.from(arrayBuffer);
+  const base64Audio = buffer.toString('base64');
+  const transcript = await transcribeAudio(base64Audio, 'audio/ogg');
+  buffer = null; // GC Flush
+  return transcript || null;
+}
+
+// Helper: Extract text and URL from Images
+async function extractMediaTextAndUrl(alias: string, fileId: string): Promise<{ text: string, url: string } | null> {
+  const telegramToken = process.env.TELEGRAM_BOT_TOKEN;
+  if (!telegramToken) return null;
+  const configRes = await fetch(`https://api.telegram.org/bot${telegramToken}/getFile?file_id=${fileId}`);
+  const configData = await configRes.json();
+  if (!configData.ok) return null;
+  
+  const filePath = configData.result.file_path;
+  const downloadRes = await fetch(`https://api.telegram.org/file/bot${telegramToken}/${filePath}`);
+  const arrayBuffer = await downloadRes.arrayBuffer();
+  
+  let buffer: Buffer | null = Buffer.from(arrayBuffer);
+  const cleanBuffer = await sharp(buffer).rotate().jpeg().toBuffer();
+  buffer = null; 
+
+  const fileName = `${alias}/${Date.now()}.jpg`;
+  await supabaseAdmin.storage.from('evidence').upload(fileName, cleanBuffer, { contentType: 'image/jpeg' });
+  const { data: publicUrlData } = supabaseAdmin.storage.from('evidence').getPublicUrl(fileName);
+  
+  const base64Image = cleanBuffer.toString('base64');
+  const visualSummary = await analyzeImageTip(base64Image, 'image/jpeg');
+  
+  return { text: visualSummary || '[Visual Content]', url: publicUrlData.publicUrl };
+}
+
+// Helper: Send Msg
+async function sendTelegramMessage(chatId: string, text: string): Promise<number | null> {
+  const telegramToken = process.env.TELEGRAM_BOT_TOKEN;
+  if (!telegramToken) return null;
+  const res = await fetch(`https://api.telegram.org/bot${telegramToken}/sendMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: chatId, text })
+  });
+  const data = await res.json();
+  if (data.ok) return data.result.message_id;
+  return null;
+}
+
+// Helper: Typing Indicator
+async function sendTypingAction(chatId: string) {
   const telegramToken = process.env.TELEGRAM_BOT_TOKEN;
   if (!telegramToken) return;
-
-  try {
-    // 1. Permanently delete the user's message from Telegram servers
-    await fetch(`https://api.telegram.org/bot${telegramToken}/deleteMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: chatId, message_id: messageId })
-    });
-    
-    // 2. Send anonymous confirmation
-    const msgText = "✅ Your tip has been securely received and this conversation has been wiped. Thank you.";
-    await fetch(`https://api.telegram.org/bot${telegramToken}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: chatId, text: msgText })
-    });
-    console.log(`[CLEANUP] Message ${messageId} deleted and confirmation sent.`);
-  } catch (err) {
-    console.error('[CLEANUP] Failed to wipe conversation:', err);
-  }
+  await fetch(`https://api.telegram.org/bot${telegramToken}/sendChatAction`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: chatId, action: 'typing' })
+  });
 }
 
-async function handleTextTip(alias: string, text: string, chatId: string, messageId: number) { 
-  console.log(`[ROUTER] Routing TEXT Tip for alias: ${alias}`); 
-  try {
-    const triageResult = await analyzeTip(text);
-    
-    const intelligenceData = {
-      ...triageResult,
-      raw_source_text: text
-    };
-    const encryptedContent = encryptData(JSON.stringify(intelligenceData));
-    
-    const { error: insertError } = await supabaseAdmin.from('tips').insert({
-      alias: alias,
-      encrypted_content: encryptedContent,
-      category: triageResult.category,
-      priority: triageResult.priority,
-      media_url: null
-    });
-    
-    if (insertError) throw new Error(`Database insert failed: ${insertError.message}`);
-    
-    console.log(`[TEXT PROCESSOR] Securely archived evidence for ${alias}`);
-    await cleanupAndNotify(chatId, messageId);
-  } catch(e) { 
-    console.error('[TEXT PROCESSOR] Error:', e); 
-  }
-}
-
-async function handleVoiceTip(alias: string, fileId: string, chatId: string, messageId: number) { 
-  console.log(`[ROUTER] Routing VOICE Tip for alias: ${alias}`); 
+// Helper: Delete Msg
+async function deleteTelegramMessage(chatId: string, messageId: number) {
   const telegramToken = process.env.TELEGRAM_BOT_TOKEN;
-  if (!telegramToken) {
-    console.warn('CRITICAL: Missing TELEGRAM_BOT_TOKEN.');
-    return;
-  }
-
-  try {
-    // 1. Get file path via Telegram API
-    const configRes = await fetch(`https://api.telegram.org/bot${telegramToken}/getFile?file_id=${fileId}`);
-    const configData = await configRes.json();
-    if (!configData.ok) throw new Error('Telegram getFile failed.');
-    
-    // 2. Download directly into memory
-    const filePath = configData.result.file_path;
-    const downloadRes = await fetch(`https://api.telegram.org/file/bot${telegramToken}/${filePath}`);
-    const arrayBuffer = await downloadRes.arrayBuffer();
-    
-    // 3. Convert to base64 for Gemini inline audio part
-    let buffer: Buffer | null = Buffer.from(arrayBuffer);
-    const base64Audio = buffer.toString('base64');
-    
-    console.log(`[VOICE PROCESSOR] Audio loaded. Transcribing...`);
-    const transcript = await transcribeAudio(base64Audio, 'audio/ogg');
-    
-    // 4. Force garbage collection of memory buffer explicitly (No disk touches)
-    buffer = null; 
-
-    console.log(`[VOICE PROCESSOR] Transcription distinct length: ${transcript?.length || 0}`);
-
-    // 5. Triage the transcript via the AI Engine
-    if (transcript) {
-      const triageResult = await analyzeTip(transcript);
-      console.log(`[TRIAGE] Result for ${alias}:`, triageResult);
-      
-      const intelligenceData = {
-        ...triageResult,
-        raw_source_text: transcript
-      };
-      const encryptedContent = encryptData(JSON.stringify(intelligenceData));
-      
-      const { error: insertError } = await supabaseAdmin.from('tips').insert({
-        alias: alias,
-        encrypted_content: encryptedContent,
-        category: triageResult.category,
-        priority: triageResult.priority,
-        media_url: null
-      });
-      
-      if (insertError) throw new Error(`Database insert failed: ${insertError.message}`);
-      
-      console.log(`[VOICE PROCESSOR] Securely archived evidence for ${alias}`);
-      await cleanupAndNotify(chatId, messageId);
-    }
-  } catch (error) {
-    console.error('[VOICE PROCESSOR] Error:', error);
-  }
-}
-
-async function handleMediaTip(alias: string, fileId: string, chatId: string, messageId: number) { 
-  console.log(`[ROUTER] Routing MEDIA Tip for alias: ${alias}`); 
-  const telegramToken = process.env.TELEGRAM_BOT_TOKEN;
-  if (!telegramToken) {
-    console.warn('CRITICAL: Missing TELEGRAM_BOT_TOKEN.');
-    return;
-  }
-
-  try {
-    const configRes = await fetch(`https://api.telegram.org/bot${telegramToken}/getFile?file_id=${fileId}`);
-    const configData = await configRes.json();
-    if (!configData.ok) throw new Error('Telegram getFile failed.');
-    
-    const filePath = configData.result.file_path;
-    const downloadRes = await fetch(`https://api.telegram.org/file/bot${telegramToken}/${filePath}`);
-    const arrayBuffer = await downloadRes.arrayBuffer();
-    
-    let buffer: Buffer | null = Buffer.from(arrayBuffer);
-    const cleanBuffer = await sharp(buffer).rotate().jpeg().toBuffer();
-    buffer = null; // Clean original
-
-    const fileName = `${alias}/${Date.now()}.jpg`;
-    const { error: uploadError } = await supabaseAdmin.storage
-      .from('evidence')
-      .upload(fileName, cleanBuffer, {
-        contentType: 'image/jpeg'
-      });
-      
-    if (uploadError) throw new Error(`Storage upload failed: ${uploadError.message}`);
-    
-    const { data: publicUrlData } = supabaseAdmin.storage.from('evidence').getPublicUrl(fileName);
-    const mediaUrl = publicUrlData.publicUrl;
-
-    const base64Image = cleanBuffer.toString('base64');
-    const visualSummary = await analyzeImageTip(base64Image, 'image/jpeg');
-    
-    const triageResult = await analyzeTip(visualSummary);
-    console.log(`[TRIAGE] Visual analysis complete for ${alias}`);
-
-    const intelligenceData = {
-      ...triageResult,
-      raw_source_text: visualSummary
-    };
-    const encryptedContent = encryptData(JSON.stringify(intelligenceData));
-    
-    const { error: insertError } = await supabaseAdmin.from('tips').insert({
-      alias: alias,
-      encrypted_content: encryptedContent,
-      category: triageResult.category,
-      priority: triageResult.priority,
-      media_url: mediaUrl
-    });
-
-    if (insertError) throw new Error(`Database insert failed: ${insertError.message}`);
-
-    console.log(`[MEDIA PROCESSOR] Securely archived evidence for ${alias}`);
-    await cleanupAndNotify(chatId, messageId);
-
-  } catch (error) {
-    console.error('[MEDIA PROCESSOR] Error:', error);
-  }
+  if (!telegramToken) return;
+  await fetch(`https://api.telegram.org/bot${telegramToken}/deleteMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: chatId, message_id: messageId })
+  });
 }
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    
-    // 1. METADATA SHREDDER
     const message = body.message;
     if (!message || !message.chat || !message.chat.id || !message.message_id) {
-      return NextResponse.json({ status: 'ignored' }, { status: 200 }); // Return 200 so Telegram won't retry
+      return NextResponse.json({ status: 'ignored' }, { status: 200 }); 
     }
     
     const chatId = message.chat.id.toString();
-    const messageId = message.message_id;
-    const text = message.text || null;
+    const incomingMessageId = message.message_id;
+    let text = message.text || null;
     let fileId = null;
+    let extractedMediaUrl = null;
     
     // Safely extract file_id if present
     if (message.photo && message.photo.length > 0) {
-      fileId = message.photo[message.photo.length - 1].file_id; // Highest resolution
+      fileId = message.photo[message.photo.length - 1].file_id; 
     } else if (message.document) {
       fileId = message.document.file_id;
     } else if (message.audio) {
@@ -210,84 +115,157 @@ export async function POST(req: Request) {
       fileId = message.video.file_id;
     }
     
-    // 1.5. START COMMAND HANDLER
+    // START COMMAND HANDLER
     if (text && text.trim() === '/start') {
-      const telegramToken = process.env.TELEGRAM_BOT_TOKEN;
-      if (telegramToken) {
-        const welcomeMessage = `Secure Tip-Line\n\nYour identity is our priority. Here is how we protect you:\n\n- Your username and phone number are shredded the moment you message us\n- Voice notes are transcribed by AI and the audio is permanently deleted — your voice cannot be identified  \n- This entire chat will be automatically wiped once your tip is submitted\n\nType your report below, or send a voice note. You are safe here.`;
-        
-        await fetch(`https://api.telegram.org/bot${telegramToken}/sendMessage`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ chat_id: chatId, text: welcomeMessage })
-        });
-      }
+      const welcomeMessage = `Secure Tip-Line\n\nYour identity is our priority. Here is how we protect you:\n\n- Your username and phone number are shredded the moment you message us\n- Voice notes are transcribed by AI and the audio is permanently deleted — your voice cannot be identified  \n- This entire chat will be automatically wiped once your tip is submitted\n\nType your report below, or send a voice note. You are safe here.`;
+      await sendTelegramMessage(chatId, welcomeMessage);
+      
+      // We physically delete the initial /start ping locally to verify deletion metrics.
+      await deleteTelegramMessage(chatId, incomingMessageId);
+      
       return NextResponse.json({ status: 'welcome_sent' }, { status: 200 });
     }
     
-    // 2. ALIAS SYSTEM
+    // ALIAS SYSTEM
     const hashedId = hashData(chatId);
     let alias = null;
     
-    // Attempt lookup using deterministic blind index (HMAC)
     const { data: existingMap, error: queryError } = await supabaseAdmin
       .from('alias_map')
       .select('alias')
       .eq('hmac_id', hashedId)
       .single();
       
-    if (queryError && queryError.code !== 'PGRST116') { // PGRST116 = no rows returned
+    if (queryError && queryError.code !== 'PGRST116') {
       console.error('Database Query Error:', queryError);
       return NextResponse.json({ error: 'Internal Error' }, { status: 500 });
     }
     
     if (existingMap) {
-      // Returning source
       alias = existingMap.alias;
-      console.log(`[ALIAS SYSTEM] Found existing source: ${alias}`);
     } else {
-      // New source identity generation
       alias = generateAlias();
-      const encryptedChatId = encryptData(chatId);
-      
-      const { error: insertError } = await supabaseAdmin
-        .from('alias_map')
-        .insert({
-           alias: alias,
-           encrypted_telegram_id: encryptedChatId,
-           hmac_id: hashedId
-        });
-        
-      if (insertError) {
-        console.error('Database Insert Error:', insertError);
-        return NextResponse.json({ error: 'Internal Error' }, { status: 500 });
-      }
-      console.log(`[ALIAS SYSTEM] Registered novel source: ${alias}`);
+      await supabaseAdmin.from('alias_map').insert({
+        alias: alias,
+        encrypted_telegram_id: encryptData(chatId),
+        hmac_id: hashedId
+      });
     }
     
-    // 3. ROUTER
+    // EXTRACT MESSAGE CONTENT
     if (message.voice) {
-      await handleVoiceTip(alias, fileId, chatId, messageId);
+      text = await extractVoiceText(fileId);
     } else if (fileId) {
-      await handleMediaTip(alias, fileId, chatId, messageId);
-    } else if (text) {
-      await handleTextTip(alias, text, chatId, messageId);
-    } else {
-      console.warn(`[ROUTER] Unhandled message format for alias: ${alias}`);
+      const mediaResult = await extractMediaTextAndUrl(alias, fileId);
+      if (mediaResult) {
+        text = mediaResult.text;
+        extractedMediaUrl = mediaResult.url;
+      }
     }
     
-    return NextResponse.json({ 
-      status: 'success', 
-      message: 'IntelDrop AI: Payload ingested securely.' 
-    });
+    if (!text) {
+      text = "[Unreadable content detected]";
+    }
+
+    const lowerText = text.toLowerCase().trim();
+
+    // SESSION EVALUATION
+    const { data: session } = await supabaseAdmin
+      .from('sessions')
+      .select('*')
+      .eq('alias', alias)
+      .eq('status', 'active')
+      .single();
+
+    const isDoneTrigger = DONE_TRIGGERS.some(trigger => lowerText.includes(trigger.toLowerCase()));
+
+    if (!session) {
+      // Create new session flow
+      const newMessages = [{ role: 'user', content: text, message_id: incomingMessageId, media_url: extractedMediaUrl }];
+      await supabaseAdmin.from('sessions').insert({
+        alias: alias,
+        messages: newMessages,
+        status: 'active'
+      });
+      
+      const botMsgText = "Got it. I'm listening — keep going. Tell me more details: when did this happen and where exactly?";
+      const botMsgId = await sendTelegramMessage(chatId, botMsgText);
+      
+      if (botMsgId) {
+        newMessages.push({ role: 'assistant', content: botMsgText, message_id: botMsgId, media_url: null });
+        await supabaseAdmin.from('sessions').update({ messages: newMessages }).eq('alias', alias).eq('status', 'active');
+      }
+      
+    } else {
+      // Existing session flow
+      const messagesArray = session.messages || [];
+      messagesArray.push({ role: 'user', content: text, message_id: incomingMessageId, media_url: extractedMediaUrl });
+
+      if (isDoneTrigger) {
+        // WIPE SEQUENCE
+        const compiledText = messagesArray
+          .filter((m: any) => m.role === 'user')
+          .map((m: any) => m.content)
+          .join('\n');
+          
+        const mediaUrls = messagesArray
+          .filter((m: any) => m.media_url)
+          .map((m: any) => m.media_url);
+        const finalMediaUrl = mediaUrls.length > 0 ? mediaUrls[0] : null;
+
+        // Route entire session block back into intelligence parser
+        const triageResult = await analyzeTip(compiledText);
+        const intelligenceData = {
+          ...triageResult,
+          raw_source_text: compiledText
+        };
+        const encryptedContent = encryptData(JSON.stringify(intelligenceData));
+        
+        await supabaseAdmin.from('tips').insert({
+          alias: alias,
+          encrypted_content: encryptedContent,
+          category: triageResult.category,
+          priority: triageResult.priority,
+          media_url: finalMediaUrl
+        });
+
+        // Trigger safe conclusion
+        const botMsgId = await sendTelegramMessage(chatId, "✅ Your report has been securely recorded and this chat will now be wiped.");
+        if (botMsgId) messagesArray.push({ role: 'assistant', message_id: botMsgId, content: 'SYSTEM: WIPED', media_url: null });
+        
+        // Physically annihilate the paper trail loop
+        for (const msg of messagesArray) {
+          if (msg.message_id) {
+            await deleteTelegramMessage(chatId, msg.message_id);
+          }
+        }
+        
+        // Nuke session node locally
+        await supabaseAdmin.from('sessions').delete().eq('id', session.id);
+        
+      } else {
+        // CONVERSATIONAL FOLLOW UP SEQUENCE
+        await sendTypingAction(chatId);
+        
+        const followUpResponse = await generateFollowUpQuestion(messagesArray) || "Please continue detailing the event.";
+        const botMsgId = await sendTelegramMessage(chatId, followUpResponse);
+        
+        if (botMsgId) {
+           messagesArray.push({ role: 'assistant', content: followUpResponse, message_id: botMsgId, media_url: null });
+        }
+        
+        await supabaseAdmin.from('sessions').update({ messages: messagesArray }).eq('id', session.id);
+      }
+    }
+    
+    return NextResponse.json({ status: 'success' }, { status: 200 });
     
   } catch (error) {
     console.error('Webhook Parser Error:', error);
-    return NextResponse.json({ error: 'Invalid Structure' }, { status: 400 });
+    return NextResponse.json({ error: 'Internal Error' }, { status: 500 });
   }
 }
 
-// Keeping GET to verify health
 export async function GET() {
   return new Response('TELEGRAM WEBHOOK RECEIVER: ONLINE', { status: 200 });
 }
