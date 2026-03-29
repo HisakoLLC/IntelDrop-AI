@@ -178,6 +178,7 @@ serve(async (req) => {
       }
     };
 
+    console.log(`[AI] Calling Gemini with history of ${formattedHistory.length} turns.`);
     const genAiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -185,7 +186,12 @@ serve(async (req) => {
     });
     
     const genAiData = await genAiRes.json();
-    const followUpResponse = genAiData?.candidates?.[0]?.content?.parts?.[0]?.text || "Please continue providing details.";
+    
+    if (!genAiRes.ok) {
+      console.error(`[AI ERROR] Google API failed with status ${genAiRes.status}:`, JSON.stringify(genAiData));
+    }
+
+    const followUpResponse = genAiData?.candidates?.[0]?.content?.parts?.[0]?.text || "Thank you. Is there anything else you wish to add to your report?";
 
     // E. Send Follow-Up
     const sendRes = await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
