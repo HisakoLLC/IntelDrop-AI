@@ -51,21 +51,26 @@ Never use exclamation marks. Never use emojis. Never say "Great!" or
 "Thank you so much!" — keep it neutral and clinical.`;
 
 // AES Decryption matches Next.js / Node.js
-function decryptData(hash: string): string {
-  if (!hash) return '';
+function decryptData(encryptedPackage: string): string {
+  if (!encryptedPackage) return '';
   const AES_KEY = Deno.env.get('AES_ENCRYPTION_KEY');
-  if (!AES_KEY) throw new Error('Missing AES key');
-  const secretKey = Buffer.from(AES_KEY, 'base64');
-  
-  const textParts = hash.split(':');
-  const iv = Buffer.from(textParts.shift()!, 'hex');
-  const encryptedText = Buffer.from(textParts.shift()!, 'hex');
-  const authTag = Buffer.from(textParts.shift()!, 'hex');
-  
-  const decipher = crypto.createDecipheriv('aes-256-gcm', secretKey, iv);
+  if (!AES_KEY || AES_KEY.length !== 32) {
+    throw new Error('CRITICAL: Missing or invalid AES_ENCRYPTION_KEY in Edge Function.');
+  }
+
+  const parts = encryptedPackage.split(':');
+  if (parts.length !== 3) throw new Error('Corrupted encrypted package.');
+
+  const iv = Buffer.from(parts[0], 'base64');
+  const authTag = Buffer.from(parts[1], 'base64');
+  const encryptedText = Buffer.from(parts[2], 'base64');
+
+  const decipher = crypto.createDecipheriv('aes-256-gcm', Buffer.from(AES_KEY, 'utf8'), iv);
   decipher.setAuthTag(authTag);
-  const decrypted = Buffer.concat([decipher.update(encryptedText), decipher.final()]);
-  return decrypted.toString();
+  
+  let decrypted = decipher.update(encryptedText, undefined, 'utf8');
+  decrypted += decipher.final('utf8');
+  return decrypted;
 }
 
 serve(async (req) => {
@@ -110,7 +115,9 @@ serve(async (req) => {
   // Filter for those with populated pending arrays natively
   const sessionsToProcess = activeSessions?.filter(s => Array.isArray(s.pending_messages) && s.pending_messages.length > 0) || [];
 
-  console.log(`[DEBOUNCE WORKER] Executing batch processing. Found ${sessionsToProcess.length} pending queues.`);
+  if (sessionsToProcess.length > 0) {
+    console.log(`[DEBOUNCE WORKER] Executing batch processing. Found ${sessionsToProcess.length} pending queues.`);
+  }
 
   // 4. Batch Processing Loop
   for (const session of sessionsToProcess) {
@@ -121,8 +128,12 @@ serve(async (req) => {
       .eq('alias', session.alias)
       .single();
 
-    if (!aliasMap) continue;
+    if (!aliasMap) {
+      console.warn(`[BATCH] Alias map missing for session ${session.alias}. Skipping.`);
+      continue;
+    }
     const chatId = decryptData(aliasMap.encrypted_telegram_id);
+    console.log(`[BATCH] Processing turn for alias: ${session.alias} -> Chat ID decrypted.`);
     const TELEGRAM_TOKEN = Deno.env.get('TELEGRAM_BOT_TOKEN');
 
     // B. Send Typing Action
@@ -152,7 +163,7 @@ serve(async (req) => {
       }
     };
 
-    const genAiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+    const genAiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(geminiPayload)
