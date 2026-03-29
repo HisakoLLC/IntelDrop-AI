@@ -187,35 +187,45 @@ export async function POST(req: Request) {
     const isDoneTrigger = DONE_TRIGGERS.some(trigger => lowerText.includes(trigger.toLowerCase()));
 
     if (!session) {
-      // Create new session flow
-      const newMessages = [{ role: 'user', content: text, message_id: incomingMessageId, media_url: extractedMediaUrl }];
-      await supabaseAdmin.from('sessions').insert({
-        alias: alias,
-        messages: newMessages,
-        status: 'active'
-      });
-      
-      const botMsgText = "Got it. I'm listening — keep going. Tell me more details: when did this happen and where exactly?";
-      const botMsgId = await sendTelegramMessage(chatId, botMsgText);
-      
-      if (botMsgId) {
-        newMessages.push({ role: 'assistant', content: botMsgText, message_id: botMsgId, media_url: null });
-        await supabaseAdmin.from('sessions').update({ messages: newMessages }).eq('alias', alias).eq('status', 'active');
+      // Create new session flow (debounced)
+      if (isDoneTrigger) {
+        // Edge case: User triggered completion on the very first text string. Unlikely, but fallback naturally.
+        const triageResult = await analyzeTip(text);
+        const encryptedContent = encryptData(JSON.stringify({ ...triageResult, raw_source_text: text }));
+        await supabaseAdmin.from('tips').insert({
+          alias: alias,
+          encrypted_content: encryptedContent,
+          category: triageResult.category,
+          priority: triageResult.priority,
+          media_url: extractedMediaUrl
+        });
+        await sendTelegramMessage(chatId, "✅ Your report has been securely recorded and this chat will now be wiped.");
+        await deleteTelegramMessage(chatId, incomingMessageId);
+      } else {
+        const newPending = [{ role: 'user', content: text, message_id: incomingMessageId, media_url: extractedMediaUrl }];
+        await supabaseAdmin.from('sessions').insert({
+          alias: alias,
+          messages: [],
+          pending_messages: newPending,
+          status: 'active'
+        });
+        // We successfully logged the buffer, bypassing generic Gemini execution natively
       }
-      
     } else {
       // Existing session flow
-      const messagesArray = session.messages || [];
-      messagesArray.push({ role: 'user', content: text, message_id: incomingMessageId, media_url: extractedMediaUrl });
+      const pendingArray = session.pending_messages || [];
+      pendingArray.push({ role: 'user', content: text, message_id: incomingMessageId, media_url: extractedMediaUrl });
 
       if (isDoneTrigger) {
-        // WIPE SEQUENCE
-        const compiledText = messagesArray
+        // WIPE SEQUENCE: Combine historic and pending arrays 
+        const combinedMessages = [...(session.messages || []), ...pendingArray];
+        
+        const compiledText = combinedMessages
           .filter((m: SessionMessage) => m.role === 'user')
           .map((m: SessionMessage) => m.content)
           .join('\n');
           
-        const mediaUrls = messagesArray
+        const mediaUrls = combinedMessages
           .filter((m: SessionMessage) => m.media_url)
           .map((m: SessionMessage) => m.media_url);
         const finalMediaUrl = mediaUrls.length > 0 ? mediaUrls[0] : null;
@@ -238,10 +248,10 @@ export async function POST(req: Request) {
 
         // Trigger safe conclusion
         const botMsgId = await sendTelegramMessage(chatId, "✅ Your report has been securely recorded and this chat will now be wiped.");
-        if (botMsgId) messagesArray.push({ role: 'assistant', message_id: botMsgId, content: 'SYSTEM: WIPED', media_url: null });
+        if (botMsgId) combinedMessages.push({ role: 'assistant', message_id: botMsgId, content: 'SYSTEM: WIPED', media_url: null });
         
         // Physically annihilate the paper trail loop
-        for (const msg of messagesArray) {
+        for (const msg of combinedMessages) {
           if (msg.message_id) {
             await deleteTelegramMessage(chatId, msg.message_id);
           }
@@ -251,17 +261,13 @@ export async function POST(req: Request) {
         await supabaseAdmin.from('sessions').delete().eq('id', session.id);
         
       } else {
-        // CONVERSATIONAL FOLLOW UP SEQUENCE
-        await sendTypingAction(chatId);
-        
-        const followUpResponse = await generateFollowUpQuestion(messagesArray) || "Please continue detailing the event.";
-        const botMsgId = await sendTelegramMessage(chatId, followUpResponse);
-        
-        if (botMsgId) {
-           messagesArray.push({ role: 'assistant', content: followUpResponse, message_id: botMsgId, media_url: null });
-        }
-        
-        await supabaseAdmin.from('sessions').update({ messages: messagesArray }).eq('id', session.id);
+        // DEBOUNCE SEQUENCE: Push strictly to pending explicitly overwriting timestamps natively mapping asynchronous boundaries.
+        await supabaseAdmin.from('sessions')
+          .update({ 
+            pending_messages: pendingArray,
+            last_message_at: new Date().toISOString()
+          })
+          .eq('id', session.id);
       }
     }
     
