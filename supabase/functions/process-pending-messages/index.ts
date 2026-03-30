@@ -213,11 +213,15 @@ serve(async (req) => {
     
     const genAiData = await genAiRes.json();
     
+    let followUpResponse = genAiData?.candidates?.[0]?.content?.parts?.[0]?.text;
+
     if (!genAiRes.ok) {
       console.error(`[AI ERROR] Google API failed with status ${genAiRes.status}:`, JSON.stringify(genAiData));
+      // TEMPORARY DEBUG: Expose the error in Telegram
+      followUpResponse = `[DEBUG] Google AI Error (${genAiRes.status}): ${JSON.stringify(genAiData.error?.message || genAiData).substring(0, 300)}`;
+    } else if (!followUpResponse) {
+      followUpResponse = "Thank you. Is there anything else you wish to add to your report?";
     }
-
-    const followUpResponse = genAiData?.candidates?.[0]?.content?.parts?.[0]?.text || "Thank you. Is there anything else you wish to add to your report?";
 
     // E. Send Follow-Up
     const sendRes = await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
