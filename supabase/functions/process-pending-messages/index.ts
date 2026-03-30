@@ -168,17 +168,32 @@ serve(async (req) => {
     const pendingMessages = Array.isArray(session.pending_messages) ? session.pending_messages : [];
     const combinedCurrentState = [...historicalMessages, ...pendingMessages];
 
-    // D. Extract Gemini Content
-    let formattedHistory = combinedCurrentState.map((msg: any) => ({
+    // D. Extract Gemini Content (with strict alternation)
+    const initialHistory = combinedCurrentState.map((msg: any) => ({
       role: msg.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: msg.content }]
+      text: msg.content
     }));
+
+    // Group adjacent identical roles together to prevent Google's 400 Bad Request
+    const consolidatedHistory = initialHistory.reduce((acc: any[], curr: any) => {
+      if (acc.length > 0 && acc[acc.length - 1].role === curr.role) {
+        acc[acc.length - 1].text += `\n[Follow Up]: ${curr.text}`;
+      } else {
+        acc.push({ role: curr.role, text: curr.text });
+      }
+      return acc;
+    }, []);
 
     // GEMINI FIX: The very first message MUST be from the user. 
     // If the history starts with our model's welcome message, remove it.
-    if (formattedHistory.length > 0 && formattedHistory[0].role === 'model') {
-      formattedHistory.shift();
+    if (consolidatedHistory.length > 0 && consolidatedHistory[0].role === 'model') {
+      consolidatedHistory.shift();
     }
+
+    const formattedHistory = consolidatedHistory.map((msg: any) => ({
+      role: msg.role,
+      parts: [{ text: msg.text }]
+    }));
 
     const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
     const geminiPayload = {
