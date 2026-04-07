@@ -88,11 +88,12 @@ async function deleteTelegramMessage(chatId: string, messageId: number) {
 }
 
 export async function POST(req: Request) {
-  let body: any = null;
+  let body: Record<string, any> | null = null; // Using any for nested flexibility, but addressing nullability.
   try {
     body = await req.json();
+    if (!body) throw new Error('Empty request body');
     console.log('[Webhook] Incoming Telegram update:', JSON.stringify(body));
-    const message = body.message;
+    const message = body.message as any;
     if (!message || !message.chat || !message.chat.id || !message.message_id) {
       return NextResponse.json({ status: 'ignored' }, { status: 200 }); 
     }
@@ -276,7 +277,7 @@ export async function POST(req: Request) {
     
     // Attempt sending error detail back to the same chat for instant transparent debugging.
     try {
-      const errorChatId = body.message?.chat?.id?.toString();
+      const errorChatId = body?.message?.chat?.id?.toString();
       if (errorChatId) {
         const botToken = process.env.TELEGRAM_BOT_TOKEN;
         await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {

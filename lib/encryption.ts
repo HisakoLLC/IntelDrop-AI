@@ -24,7 +24,7 @@ function getEncryptionKeyBuffer(): Buffer {
     try {
       const buf = Buffer.from(rawKey, 'base64');
       if (buf.length === 32) return buf;
-    } catch (e) {
+    } catch {
       // Fall through
     }
   }
@@ -34,7 +34,7 @@ function getEncryptionKeyBuffer(): Buffer {
     try {
       const buf = Buffer.from(rawKey, 'hex');
       if (buf.length === 32) return buf;
-    } catch (e) {
+    } catch {
       // Fall through
     }
   }
