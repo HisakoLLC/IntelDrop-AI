@@ -16,7 +16,12 @@ export async function GET() {
 
     if (error) throw error;
     if (!sessions || sessions.length === 0) {
-      return NextResponse.json({ status: 'no_pending_sessions' });
+      const { count: totalActive } = await supabaseAdmin.from('sessions').select('*', { count: 'exact', head: true }).eq('status', 'active');
+      return NextResponse.json({ 
+        status: 'no_pending_sessions', 
+        threshold_used: threshold.toISOString(),
+        active_sessions_in_db: totalActive || 0
+      });
     }
 
     const results = [];

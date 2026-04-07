@@ -229,7 +229,7 @@ export async function POST(req: Request) {
           status: 'active',
           last_message_at: new Date().toISOString()
         });
-        // We successfully logged the buffer, bypassing generic Gemini execution natively
+        console.log(`[Webhook] Created new session for alias: ${alias} with 1 pending message.`);
       }
     } else {
       // Existing session flow
