@@ -3,7 +3,7 @@ import { encryptData, hashData } from '@/lib/encryption';
 import { generateAlias } from '@/lib/alias';
 import { supabaseAdmin } from '@/lib/supabase';
 import { analyzeTip, transcribeAudio, analyzeImageTip } from '@/lib/gemini';
-import sharp from 'sharp';
+// Removed static sharp import to prevent runtime architecture crashes on module load.
 
 interface SessionMessage {
   role: string;
@@ -47,6 +47,8 @@ async function extractMediaTextAndUrl(alias: string, fileId: string): Promise<{ 
   const arrayBuffer = await downloadRes.arrayBuffer();
   
   let buffer: Buffer | null = Buffer.from(arrayBuffer);
+  // Dynamic import for sharp to prevent module-level initialization errors on Vercel Node environment.
+  const { default: sharp } = await import('sharp');
   const cleanBuffer = await sharp(buffer).rotate().jpeg().toBuffer();
   buffer = null; 
 
@@ -270,7 +272,12 @@ export async function POST(req: Request) {
   } catch (error) {
     const err = error as Error;
     console.error('Webhook Parser Error:', err.message, err.stack);
-    return NextResponse.json({ error: 'Internal Error', detail: err.message }, { status: 500 });
+    // Safe Debug Mode: Return 200 to Telegram to clear the queue, but send the error in details.
+    return NextResponse.json({ 
+      status: 'error_logged', 
+      detail: err.message,
+      hint: 'The error was fatal but we returned 200 to clear the Telegram pending queue.'
+    }, { status: 200 });
   }
 }
 
