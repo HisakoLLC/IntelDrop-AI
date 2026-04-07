@@ -88,6 +88,7 @@ async function deleteTelegramMessage(chatId: string, messageId: number) {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
+    console.log('[Webhook] Incoming Telegram update:', JSON.stringify(body));
     const message = body.message;
     if (!message || !message.chat || !message.chat.id || !message.message_id) {
       return NextResponse.json({ status: 'ignored' }, { status: 200 }); 
@@ -267,8 +268,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ status: 'success' }, { status: 200 });
     
   } catch (error) {
-    console.error('Webhook Parser Error:', error);
-    return NextResponse.json({ error: 'Internal Error' }, { status: 500 });
+    const err = error as Error;
+    console.error('Webhook Parser Error:', err.message, err.stack);
+    return NextResponse.json({ error: 'Internal Error', detail: err.message }, { status: 500 });
   }
 }
 
