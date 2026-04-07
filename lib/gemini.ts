@@ -84,67 +84,99 @@ TONE: Calm, professional, and brief. Maximum 2 sentences per response.
 Never use exclamation marks. Never use emojis. Never say "Great!" or 
 "Thank you so much!" — keep it neutral and clinical.`;
 
-export async function generateFollowUpQuestion(conversationHistory) {
-  // Translate the history format {role, content} to Gemini's format 
-  // Gemini expects: { role: 'user' | 'model', parts: [{ text: '...' }] }
-  const formattedHistory = conversationHistory.map(msg => ({
+interface Message {
+  role: string;
+  content: string;
+}
+
+export async function generateFollowUpQuestion(conversationHistory: Message[]): Promise<string> {
+  // Step 1: Map roles correctly
+  let contents = conversationHistory.map(msg => ({
     role: msg.role === 'assistant' ? 'model' : 'user',
     parts: [{ text: msg.content }]
   }));
 
-  const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash',
-    contents: formattedHistory,
+  // Step 2: Squash consecutive messages of the same role (Gemini Requirement)
+  const squashedContents: any[] = [];
+  for (const part of contents) {
+    if (squashedContents.length > 0 && squashedContents[squashedContents.length - 1].role === part.role) {
+      squashedContents[squashedContents.length - 1].parts[0].text += "\n\n" + part.parts[0].text;
+    } else {
+      squashedContents.push(part);
+    }
+  }
+
+  // Step 3: Ensure it starts with 'user'
+  if (squashedContents.length > 0 && squashedContents[0].role === 'model') {
+    squashedContents.shift();
+  }
+
+  const result = await ai.models.generateContent({
+    model: 'gemini-1.5-flash',
+    contents: squashedContents,
     config: {
       systemInstruction: CONVERSATION_PROMPT,
-      temperature: 0.1, // Ultra-low temperature for maximum neutrality and forensic precision
+      temperature: 0.1,
     }
   });
 
-  return response.text;
+  return result.text || '';
 }
 
-export async function analyzeTip(rawText) {
-  const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash',
-    contents: rawText,
+export async function analyzeTip(rawText: string) {
+  const result = await ai.models.generateContent({
+    model: 'gemini-1.5-flash',
+    contents: [{ role: 'user', parts: [{ text: rawText }] }],
     config: {
       systemInstruction: SYSTEM_PROMPT,
       responseMimeType: 'application/json',
       temperature: 0.1,
     },
   });
-  return JSON.parse(response.text);
+  
+  return JSON.parse(result.text || '{}');
 }
 
-export async function transcribeAudio(base64Audio, mimeType) {
-  const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash',
+export async function transcribeAudio(base64Audio: string, mimeType: string): Promise<string> {
+  const result = await ai.models.generateContent({
+    model: 'gemini-1.5-flash',
     contents: [
       {
-        inlineData: {
-          data: base64Audio,
-          mimeType: mimeType
-        }
-      },
-      "Transcribe this audio. If it is not in English, translate the transcription to professional English. Output ONLY the resulting english text. Do not include markdown or conversational text."
+        role: 'user',
+        parts: [
+          {
+            inlineData: {
+              data: base64Audio,
+              mimeType: mimeType
+            }
+          },
+          { text: "Transcribe this audio. If it is not in English, translate the transcription to professional English. Output ONLY the resulting english text. Do not include markdown or conversational text." }
+        ]
+      }
     ],
   });
-  return response.text;
+  
+  return result.text || '';
 }
 
-export async function analyzeImageTip(base64Image, mimeType) {
-  const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash',
+export async function analyzeImageTip(base64Image: string, mimeType: string): Promise<string | null> {
+  const result = await ai.models.generateContent({
+    model: 'gemini-1.5-flash',
     contents: [
       {
-        inlineData: {
-          data: base64Image,
-          mimeType: mimeType
-        }
-      },
-      "describe what you see in this image in 2 sentences for an investigative journalist."
+        role: 'user',
+        parts: [
+          {
+            inlineData: {
+              data: base64Image,
+              mimeType: mimeType
+            }
+          },
+          { text: "describe what you see in this image in 2 sentences for an investigative journalist." }
+        ]
+      }
     ],
   });
-  return response.text;
+  
+  return result.text || '';
 }

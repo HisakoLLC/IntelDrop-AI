@@ -3,9 +3,9 @@ import crypto from 'crypto';
 const ENCRYPTION_KEY = process.env.AES_ENCRYPTION_KEY;
 const ALGORITHM = 'aes-256-gcm';
 
-export function encryptData(text) {
+export function encryptData(text: string): string {
   if (!ENCRYPTION_KEY || ENCRYPTION_KEY.length !== 32) {
-    throw new Error('CRITICAL: Missing or invalid AES_ENCRYPTION_KEY.');
+    throw new Error('CRITICAL: Missing or invalid AES_ENCRYPTION_KEY. Must be exactly 32 chars.');
   }
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv(ALGORITHM, Buffer.from(ENCRYPTION_KEY, 'utf8'), iv);
@@ -15,9 +15,9 @@ export function encryptData(text) {
   return `${iv.toString('base64')}:${authTag.toString('base64')}:${encrypted}`;
 }
 
-export function decryptData(encryptedPackage) {
+export function decryptData(encryptedPackage: string): string {
   if (!ENCRYPTION_KEY || ENCRYPTION_KEY.length !== 32) {
-    throw new Error('CRITICAL: Missing or invalid AES_ENCRYPTION_KEY.');
+    throw new Error('CRITICAL: Missing or invalid AES_ENCRYPTION_KEY. Must be exactly 32 chars.');
   }
   const parts = encryptedPackage.split(':');
   if (parts.length !== 3) throw new Error('Corrupted encrypted package.');
@@ -30,9 +30,9 @@ export function decryptData(encryptedPackage) {
   return decrypted;
 }
 
-export function hashData(text) {
+export function hashData(text: string): string {
   if (!ENCRYPTION_KEY || ENCRYPTION_KEY.length !== 32) {
-    throw new Error('CRITICAL: Missing or invalid AES_ENCRYPTION_KEY.');
+    throw new Error('CRITICAL: Missing or invalid AES_ENCRYPTION_KEY. Must be exactly 32 chars.');
   }
   return crypto.createHmac('sha256', ENCRYPTION_KEY).update(text).digest('hex');
 }

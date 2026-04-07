@@ -22,7 +22,8 @@ async function extractVoiceText(fileId: string): Promise<string | null> {
   const configData = await configRes.json();
   if (!configData.ok) return null;
   
-  const filePath = configData.result.file_path;
+  const filePath = configData.result?.file_path;
+  if (!filePath) return null;
   const downloadRes = await fetch(`https://api.telegram.org/file/bot${telegramToken}/${filePath}`);
   const arrayBuffer = await downloadRes.arrayBuffer();
   
@@ -149,9 +150,9 @@ export async function POST(req: Request) {
     }
     
     // EXTRACT MESSAGE CONTENT
-    if (message.voice) {
+    if (message.voice && fileId) {
       text = await extractVoiceText(fileId);
-    } else if (fileId) {
+    } else if (fileId && alias) {
       const mediaResult = await extractMediaTextAndUrl(alias, fileId);
       if (mediaResult) {
         text = mediaResult.text;
@@ -191,23 +192,24 @@ export async function POST(req: Request) {
         await sendTelegramMessage(chatId, "✅ Your report has been securely recorded and this chat will now be wiped.");
         await deleteTelegramMessage(chatId, incomingMessageId);
       } else {
-        const newPending = [{ role: 'user', content: text, message_id: incomingMessageId, media_url: extractedMediaUrl }];
+        const newPending: SessionMessage[] = [{ role: 'user', content: text, message_id: incomingMessageId, media_url: extractedMediaUrl }];
         await supabaseAdmin.from('sessions').insert({
           alias: alias,
           messages: [],
           pending_messages: newPending,
-          status: 'active'
+          status: 'active',
+          last_message_at: new Date().toISOString()
         });
         // We successfully logged the buffer, bypassing generic Gemini execution natively
       }
     } else {
       // Existing session flow
-      const pendingArray = session.pending_messages || [];
+      const pendingArray: SessionMessage[] = (session.pending_messages as unknown as SessionMessage[]) || [];
       pendingArray.push({ role: 'user', content: text, message_id: incomingMessageId, media_url: extractedMediaUrl });
 
       if (isDoneTrigger) {
         // WIPE SEQUENCE: Combine historic and pending arrays 
-        const combinedMessages = [...(session.messages || []), ...pendingArray];
+        const combinedMessages: SessionMessage[] = [...(session.messages || []), ...pendingArray];
         
         const compiledText = combinedMessages
           .filter((m: SessionMessage) => m.role === 'user')
@@ -247,7 +249,9 @@ export async function POST(req: Request) {
         }
         
         // Nuke session node locally
-        await supabaseAdmin.from('sessions').delete().eq('id', session.id);
+        if (session.id) {
+          await supabaseAdmin.from('sessions').delete().eq('id', session.id);
+        }
         
       } else {
         // DEBOUNCE SEQUENCE: Push strictly to pending explicitly overwriting timestamps natively mapping asynchronous boundaries.
@@ -256,7 +260,7 @@ export async function POST(req: Request) {
             pending_messages: pendingArray,
             last_message_at: new Date().toISOString()
           })
-          .eq('id', session.id);
+          .eq('id', session.id as string);
       }
     }
     
