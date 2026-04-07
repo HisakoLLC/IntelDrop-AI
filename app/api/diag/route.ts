@@ -1,4 +1,5 @@
-import { NextResponse } from 'next/server';
+ 
+// Triggering fresh deployment for IntelDrop AI verification.
 
 export async function GET() {
   const diag = {
