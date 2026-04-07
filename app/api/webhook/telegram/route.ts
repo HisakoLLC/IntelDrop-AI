@@ -88,8 +88,9 @@ async function deleteTelegramMessage(chatId: string, messageId: number) {
 }
 
 export async function POST(req: Request) {
+  let body: any = null;
   try {
-    const body = await req.json();
+    body = await req.json();
     console.log('[Webhook] Incoming Telegram update:', JSON.stringify(body));
     const message = body.message;
     if (!message || !message.chat || !message.chat.id || !message.message_id) {
@@ -272,11 +273,26 @@ export async function POST(req: Request) {
   } catch (error) {
     const err = error as Error;
     console.error('Webhook Parser Error:', err.message, err.stack);
-    // Safe Debug Mode: Return 200 to Telegram to clear the queue, but send the error in details.
+    
+    // Attempt sending error detail back to the same chat for instant transparent debugging.
+    try {
+      const errorChatId = body.message?.chat?.id?.toString();
+      if (errorChatId) {
+        const botToken = process.env.TELEGRAM_BOT_TOKEN;
+        await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: errorChatId, text: `❌ SYSTEM CRASH:\n\n${err.message}\n\nTrace: ${err.stack?.slice(0, 500)}` })
+        });
+      }
+    } catch (tgErr) {
+      console.error('Failed to send error notification to Telegram:', tgErr);
+    }
+
+    // Safe Debug Mode: Return 200 to Telegram to clear the queue
     return NextResponse.json({ 
       status: 'error_logged', 
       detail: err.message,
-      hint: 'The error was fatal but we returned 200 to clear the Telegram pending queue.'
     }, { status: 200 });
   }
 }
