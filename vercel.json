@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/cron/heartbeat",
-      "schedule": "* * * * *"
+      "schedule": "0 0 * * *"
     }
   ],
   "rewrites": [
