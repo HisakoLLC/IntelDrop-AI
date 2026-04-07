@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { generateFollowUpQuestion } from '@/lib/gemini';
 
-export async function GET(req: Request) {
+export async function GET() {
   // Simple auth check for cron if needed, though for now we just run it
   try {
     const now = new Date();
@@ -78,8 +78,9 @@ export async function GET(req: Request) {
     }
 
     return NextResponse.json({ status: 'success', processed: results.length });
-  } catch (error: any) {
-    console.error('Heartbeat Error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error) {
+    const err = error as Error;
+    console.error('Heartbeat Error:', err);
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

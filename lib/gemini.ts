@@ -89,15 +89,24 @@ interface Message {
   content: string;
 }
 
+interface GeminiPart {
+  text: string;
+}
+
+interface GeminiContent {
+  role: string;
+  parts: GeminiPart[];
+}
+
 export async function generateFollowUpQuestion(conversationHistory: Message[]): Promise<string> {
   // Step 1: Map roles correctly
-  let contents = conversationHistory.map(msg => ({
+  const contents = conversationHistory.map(msg => ({
     role: msg.role === 'assistant' ? 'model' : 'user',
     parts: [{ text: msg.content }]
   }));
 
   // Step 2: Squash consecutive messages of the same role (Gemini Requirement)
-  const squashedContents: any[] = [];
+  const squashedContents: GeminiContent[] = [];
   for (const part of contents) {
     if (squashedContents.length > 0 && squashedContents[squashedContents.length - 1].role === part.role) {
       squashedContents[squashedContents.length - 1].parts[0].text += "\n\n" + part.parts[0].text;
