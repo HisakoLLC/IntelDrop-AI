@@ -5,6 +5,27 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { analyzeTip, transcribeAudio, analyzeImageTip } from '@/lib/gemini';
 // Removed static sharp import to prevent runtime architecture crashes on module load.
 
+interface TelegramMessage {
+  message_id: number;
+  chat: {
+    id: number;
+    username?: string;
+    first_name?: string;
+  };
+  text?: string;
+  photo?: Array<{ file_id: string }>;
+  document?: { file_id: string };
+  audio?: { file_id: string };
+  voice?: { file_id: string };
+  video?: { file_id: string };
+  caption?: string;
+}
+
+interface TelegramUpdate {
+  update_id: number;
+  message?: TelegramMessage;
+}
+
 interface SessionMessage {
   role: string;
   content: string;
@@ -88,13 +109,16 @@ async function deleteTelegramMessage(chatId: string, messageId: number) {
 }
 
 export async function POST(req: Request) {
-  let body: Record<string, any> | null = null; // Using any for nested flexibility, but addressing nullability.
+  let body: TelegramUpdate | null = null;
   try {
     body = await req.json();
-    if (!body) throw new Error('Empty request body');
+    if (!body || !body.message) {
+      return NextResponse.json({ status: 'ignored' }, { status: 200 }); 
+    }
+    
     console.log('[Webhook] Incoming Telegram update:', JSON.stringify(body));
-    const message = body.message as any;
-    if (!message || !message.chat || !message.chat.id || !message.message_id) {
+    const message = body.message;
+    if (!message.chat || !message.chat.id || !message.message_id) {
       return NextResponse.json({ status: 'ignored' }, { status: 200 }); 
     }
     
