@@ -33,7 +33,7 @@ export async function POST(req: Request) {
     try {
       const parsedBody = JSON.parse(body);
       return await processHeartbeat(parsedBody.alias);
-    } catch (e) {
+    } catch {
       return NextResponse.json({ error: 'Body parsing failed' }, { status: 400 });
     }
   }

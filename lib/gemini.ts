@@ -9,10 +9,17 @@ const PRIMARY_MODEL = 'gemini-2.0-flash-001';
 const FALLBACK_1 = 'gemini-2.5-flash';
 const FALLBACK_2 = 'gemini-3.1-flash-live-preview';
 
+interface SessionMessage {
+  role: string;
+  content: string;
+  message_id?: number;
+  media_url?: string | null;
+}
+
 /**
  * Resilient wrapper for AI calls with exponential backoff and multi-tier model fallback.
  */
-async function callResilientAI(options: any, attempt = 1): Promise<any> {
+async function callResilientAI(options: Record<string, unknown>, attempt = 1): Promise<any> {
   // Rotate through models as attempts fail
   let modelToUse = PRIMARY_MODEL;
   if (attempt === 2) modelToUse = FALLBACK_1;
@@ -24,8 +31,11 @@ async function callResilientAI(options: any, attempt = 1): Promise<any> {
       ...options,
       model: modelToUse
     });
-  } catch (err: any) {
-    const isRetryable = err.message?.includes('503') || err.message?.includes('429') || err.message?.includes('UNAVAILABLE');
+  } catch (err: unknown) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    const isRetryable = errorMessage.includes('503') || 
+                        errorMessage.includes('429') || 
+                        errorMessage.includes('UNAVAILABLE');
     
     // Max 6 retries (~60s of persistence)
     if (isRetryable && attempt < 6) {
@@ -56,7 +66,7 @@ If information is missing, ask ONE follow-up question at a time.
 Keep responses under 50 words. Do not use your name in every message.
 If they say they are done, thank them and tell them the chat will be wiped.`;
 
-export async function generateFollowUpQuestion(messages: any[]) {
+export async function generateFollowUpQuestion(messages: SessionMessage[]) {
   const squashedContents = messages.map(m => ({
     role: m.role === 'assistant' ? 'model' : 'user',
     parts: [{ text: m.content || '[Media Content]' }]
