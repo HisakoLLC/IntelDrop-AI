@@ -212,20 +212,26 @@ export async function POST(req: Request) {
 
     // 4. PROCESS MESSAGE
     if (!session) {
-      // Emergency session fallback if user didn't hit /start
       if (isDoneTrigger) {
-        await sendTelegramMessage(chatId, "⚠️ No active report found to submit. Please use /start to begin.");
+        const errorMsgId = await sendTelegramMessage(chatId, "⚠️ No active report found to submit. Please use /start to begin.");
         await deleteTelegramMessage(chatId, incomingMessageId);
+        // Self-destruct error message after 5 seconds
+        if (errorMsgId) {
+          setTimeout(() => deleteTelegramMessage(chatId, errorMsgId), 5000);
+        }
         return NextResponse.json({ status: 'no_session' }, { status: 200 });
       }
       
-      // Create session on-the-fly
+      // Create session on-the-fly (Ensuring welcome is included if it was sent)
       const botMsgId = await sendTelegramMessage(chatId, FOLLOW_UP_PROMPT);
       const messages: SessionMessage[] = [];
       if (botMsgId) messages.push({ role: 'assistant', content: 'PROMPT', message_id: botMsgId });
       
       const pending: SessionMessage[] = [{ role: 'user', content: text, message_id: incomingMessageId, media_url: extractedMediaUrl }];
       
+      // Ensure we clean up any old inactive sessions for this alias first
+      await supabaseAdmin.from('sessions').delete().eq('alias', alias);
+
       await supabaseAdmin.from('sessions').insert({
         alias: alias,
         messages: messages,

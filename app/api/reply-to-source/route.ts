@@ -74,9 +74,9 @@ export async function POST(req: Request) {
 
     const newMessageId = telData.result.message_id;
 
-    // 5. IF A SESSION EXISTS, TRACK THE OPERATOR MESSAGE ID FOR WIPING
+    // 5. TRACK THE OPERATOR MESSAGE ID FOR WIPING
     if (newMessageId) {
-      // Re-fetch session to ensure we have the absolute latest state (prevent overwriting concurrent updates)
+      // Re-fetch session to ensure we have the absolute latest state
       const { data: latestSession } = await supabaseAdmin
         .from('sessions')
         .select('id, messages')
@@ -87,17 +87,18 @@ export async function POST(req: Request) {
       if (latestSession) {
         const messages: any[] = (latestSession.messages as any) || [];
         messages.push({ role: 'assistant', content: 'OPERATOR_REPLY', message_id: newMessageId });
-        
-        const { error: updateError } = await supabaseAdmin.from('sessions')
-          .update({ messages: messages })
-          .eq('id', latestSession.id);
-        
-        if (updateError) {
-          console.error('[Dashboard] Failed to update session with operator ID:', updateError);
-        } else {
-          console.log(`[Dashboard] Tracked Operator Reply ID: ${newMessageId} for alias: ${alias}`);
-        }
+        await supabaseAdmin.from('sessions').update({ messages: messages }).eq('id', latestSession.id);
+      } else {
+        // AUTO-ANCHOR: Create a session just to track this message if none exists
+        await supabaseAdmin.from('sessions').insert({
+          alias: alias,
+          messages: [{ role: 'assistant', content: 'OPERATOR_REPLY', message_id: newMessageId }],
+          pending_messages: [],
+          status: 'active',
+          last_message_at: new Date().toISOString()
+        });
       }
+      console.log(`[Dashboard] Locked Operator Reply ID: ${newMessageId} for alias: ${alias}`);
     }
     
     return NextResponse.json({ status: 'sent', message: 'Payload Dispatched SECURELY' }, { status: 200 });
