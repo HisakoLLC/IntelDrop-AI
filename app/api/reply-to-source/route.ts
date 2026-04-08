@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { createClient } from '@/lib/supabase-server';
@@ -20,7 +21,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Missing specific node parameters payload.' }, { status: 400 });
     }
     
-    // 1. Fetch the encrypted_telegram_id from alias_map
+    // 1. Fetch the encrypted_telegram_id and existing session messages
     const { data: routeData, error: mapError } = await supabaseAdmin
       .from('alias_map')
       .select('encrypted_telegram_id')
@@ -31,13 +32,20 @@ export async function POST(req: Request) {
       console.error('Failed locating deterministic map:', mapError);
       return NextResponse.json({ error: 'Unknown Alias Target' }, { status: 404 });
     }
+
+    const { data: session } = await supabaseAdmin
+      .from('sessions')
+      .select('*')
+      .eq('alias', alias)
+      .eq('status', 'active')
+      .single();
     
     const telegramToken = process.env.TELEGRAM_BOT_TOKEN;
     if (!telegramToken) {
       return NextResponse.json({ error: 'Missing System Hooks' }, { status: 500 });
     }
     
-    // 2. Decrypt it in memory
+    // 2. Decrypt target chatId
     let chatId: string | null = null;
     try {
       chatId = decryptData(routeData.encrypted_telegram_id);
@@ -56,15 +64,28 @@ export async function POST(req: Request) {
     });
     
     // 4. CRITICAL: Immediate memory destructure (exists <100ms)
-    chatId = null; // <= EXACT LINE WHERE DECRYPTED ID IS NULLIFIED (V8 GC executes memory sweep)
+    chatId = null; 
     
     const telData = await telRes.json();
     if (!telData.ok) {
        console.error('Telegram Transmission Blockage:', telData);
        return NextResponse.json({ error: 'Upstream Message Delivery Blocked' }, { status: 502 });
     }
+
+    const newMessageId = telData.result.message_id;
+
+    // 5. IF A SESSION EXISTS, TRACK THE OPERATOR MESSAGE ID FOR WIPING
+    if (session && newMessageId) {
+      const messages: any[] = (session.messages as any) || [];
+      messages.push({ role: 'assistant', content: 'OPERATOR_REPLY', message_id: newMessageId });
+      
+      await supabaseAdmin.from('sessions')
+        .update({ messages: messages })
+        .eq('id', session.id);
+      
+      console.log(`[Dashboard] Tracked Operator Reply ID: ${newMessageId} for alias: ${alias}`);
+    }
     
-    // 5. Return a 200 success response
     return NextResponse.json({ status: 'sent', message: 'Payload Dispatched SECURELY' }, { status: 200 });
     
   } catch (err) {
