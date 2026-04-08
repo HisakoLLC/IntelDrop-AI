@@ -54,10 +54,11 @@ Your goal is to perform "Multimodal Triage" on whistleblower reports.
 Return ONLY valid JSON in this format:
 {
   "category": "Corruption" | "Crime" | "Corporate" | "Other",
-  "priority": "High" | "Medium" | "Low",
+  "priority": "High" | "Medium" | "Low" | "Spam",
   "summary": "one sentence summary",
   "risk_assessment": "short risk note"
-}`;
+}
+If the submission is a greeting, casual conversation, random text, or irrelevant to intelligence (e.g. asking about weekend plans), set priority to "Spam" and category to "Other".`;
 
 const CONVERSATION_PROMPT = `You are "Naisha", the IntelDrop intake officer. 
 You are speaking with a whistleblower. They are anonymous and likely stressed.
