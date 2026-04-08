@@ -3,8 +3,6 @@ import { encryptData, hashData } from '@/lib/encryption';
 import { generateAlias } from '@/lib/alias';
 import { supabaseAdmin } from '@/lib/supabase';
 import { analyzeTip, transcribeAudio, analyzeImageTip } from '@/lib/gemini';
-import { Client as QStashClient } from '@upstash/qstash';
-// Removed static sharp import to prevent runtime architecture crashes on module load.
 
 interface TelegramMessage {
   message_id: number;
@@ -34,7 +32,8 @@ interface SessionMessage {
   media_url?: string | null;
 }
 
-const DONE_TRIGGERS = ["done", "i'm done", "that's all", "naisha", "nimemaliza", "ok. i'm done", "finished"];
+const DONE_TRIGGERS = ["done", "i'm done", "that's all", "finished", "summarize", "ok. i'm done", "nimemaliza"];
+const FOLLOW_UP_PROMPT = "Thank you. Do you have more info or want to add something? If done, please reply **'done'** to securely submit and wipe this entire chat.";
 
 // Helper: Extract text from Voice
 async function extractVoiceText(fileId: string): Promise<string | null> {
@@ -52,7 +51,7 @@ async function extractVoiceText(fileId: string): Promise<string | null> {
   let buffer: Buffer | null = Buffer.from(arrayBuffer);
   const base64Audio = buffer.toString('base64');
   const transcript = await transcribeAudio(base64Audio, 'audio/ogg');
-  buffer = null; // GC Flush
+  buffer = null; 
   return transcript || null;
 }
 
@@ -69,7 +68,6 @@ async function extractMediaTextAndUrl(alias: string, fileId: string): Promise<{ 
   const arrayBuffer = await downloadRes.arrayBuffer();
   
   let buffer: Buffer | null = Buffer.from(arrayBuffer);
-  // Dynamic import for sharp to prevent module-level initialization errors on Vercel Node environment.
   const { default: sharp } = await import('sharp');
   const cleanBuffer = await sharp(buffer).rotate().jpeg().toBuffer();
   buffer = null; 
@@ -91,7 +89,7 @@ async function sendTelegramMessage(chatId: string, text: string): Promise<number
   const res = await fetch(`https://api.telegram.org/bot${telegramToken}/sendMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text })
+    body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'Markdown' })
   });
   const data = await res.json();
   if (data.ok) return data.result.message_id;
@@ -117,7 +115,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ status: 'ignored' }, { status: 200 }); 
     }
     
-    console.log('[Webhook] Incoming Telegram update:', JSON.stringify(body));
     const message = body.message;
     if (!message.chat || !message.chat.id || !message.message_id) {
       return NextResponse.json({ status: 'ignored' }, { status: 200 }); 
@@ -129,7 +126,7 @@ export async function POST(req: Request) {
     let fileId = null;
     let extractedMediaUrl = null;
     
-    // Safely extract file_id if present
+    // Media detection
     if (message.photo && message.photo.length > 0) {
       fileId = message.photo[message.photo.length - 1].file_id; 
     } else if (message.document) {
@@ -142,32 +139,16 @@ export async function POST(req: Request) {
       fileId = message.video.file_id;
     }
     
-    // START COMMAND HANDLER
-    if (text && text.trim() === '/start') {
-      const welcomeMessage = `Secure Tip-Line\n\nYour identity is our priority. Here is how we protect you:\n\n- Your username and phone number are shredded the moment you message us\n- Voice notes are transcribed by AI and the audio is permanently deleted — your voice cannot be identified  \n- This entire chat will be automatically wiped once your tip is submitted\n\nType your report below, or send a voice note. You are safe here.`;
-      await sendTelegramMessage(chatId, welcomeMessage);
-      
-      // We physically delete the initial /start ping locally to verify deletion metrics.
-      await deleteTelegramMessage(chatId, incomingMessageId);
-      
-      return NextResponse.json({ status: 'welcome_sent' }, { status: 200 });
-    }
-    
-    // ALIAS SYSTEM
+    // ALIAS & SESSION PREP
     const hashedId = hashData(chatId);
     let alias = null;
     
-    const { data: existingMap, error: queryError } = await supabaseAdmin
+    const { data: existingMap } = await supabaseAdmin
       .from('alias_map')
       .select('alias')
       .eq('hmac_id', hashedId)
       .single();
       
-    if (queryError && queryError.code !== 'PGRST116') {
-      console.error('Database Query Error:', queryError);
-      return NextResponse.json({ error: 'Internal Error' }, { status: 500 });
-    }
-    
     if (existingMap) {
       alias = existingMap.alias;
     } else {
@@ -178,8 +159,31 @@ export async function POST(req: Request) {
         hmac_id: hashedId
       });
     }
-    
-    // EXTRACT MESSAGE CONTENT
+
+    // 1. HANDLE /START (Welcome + Track ID)
+    if (text && text.trim() === '/start') {
+      const welcome = `Secure Tip-Line\n\nYour identity is our priority. Here is how we protect you:\n\n- Your username and phone number are shredded the moment you message us\n- Voice notes are transcribed by AI and the audio is permanently deleted\n- This entire chat will be automatically wiped once your tip is submitted\n\nType your report below. You are safe here.`;
+      const welcomeId = await sendTelegramMessage(chatId, welcome);
+      
+      // Physically remove the command text from user view
+      await deleteTelegramMessage(chatId, incomingMessageId);
+      
+      // Initialize/Reset session with the welcome message ID for deletion tracking
+      const newMessages: SessionMessage[] = [];
+      if (welcomeId) newMessages.push({ role: 'assistant', content: 'WELCOME', message_id: welcomeId });
+      
+      await supabaseAdmin.from('sessions').upsert({
+        alias: alias,
+        messages: newMessages,
+        pending_messages: [],
+        status: 'active',
+        last_message_at: new Date().toISOString()
+      }, { onConflict: 'alias' });
+      
+      return NextResponse.json({ status: 'welcome_sent' }, { status: 200 });
+    }
+
+    // 2. EXTRACT CONTENT (Media/Voice)
     if (message.voice && fileId) {
       text = await extractVoiceText(fileId);
     } else if (fileId && alias) {
@@ -190,13 +194,11 @@ export async function POST(req: Request) {
       }
     }
     
-    if (!text) {
-      text = "[Unreadable content detected]";
-    }
-
+    if (!text) text = "[Unreadable content detected]";
     const lowerText = text.toLowerCase().trim();
+    const isDoneTrigger = DONE_TRIGGERS.some(trigger => lowerText.includes(trigger.toLowerCase()));
 
-    // SESSION EVALUATION
+    // 3. RETRIEVE SESSION
     const { data: session } = await supabaseAdmin
       .from('sessions')
       .select('*')
@@ -204,146 +206,96 @@ export async function POST(req: Request) {
       .eq('status', 'active')
       .single();
 
-    const isDoneTrigger = DONE_TRIGGERS.some(trigger => lowerText.includes(trigger.toLowerCase()));
-
+    // 4. PROCESS MESSAGE
     if (!session) {
-      // Create new session flow (debounced)
+      // Emergency session fallback if user didn't hit /start
       if (isDoneTrigger) {
-        // Edge case: User triggered completion on the very first text string. Unlikely, but fallback naturally.
-        const triageResult = await analyzeTip(text);
-        const encryptedContent = encryptData(JSON.stringify({ ...triageResult, raw_source_text: text }));
-        await supabaseAdmin.from('tips').insert({
-          alias: alias,
-          encrypted_content: encryptedContent,
-          category: triageResult.category,
-          priority: triageResult.priority,
-          media_url: extractedMediaUrl
-        });
-        await sendTelegramMessage(chatId, "✅ Your report has been securely recorded and this chat will now be wiped.");
+        await sendTelegramMessage(chatId, "⚠️ No active report found to submit. Please use /start to begin.");
         await deleteTelegramMessage(chatId, incomingMessageId);
-      } else {
-        const newPending: SessionMessage[] = [{ role: 'user', content: text, message_id: incomingMessageId, media_url: extractedMediaUrl }];
-        await supabaseAdmin.from('sessions').insert({
-          alias: alias,
-          messages: [],
-          pending_messages: newPending,
-          status: 'active',
-          last_message_at: new Date().toISOString()
-        });
-        console.log(`[Webhook] Created new session for alias: ${alias} with 1 pending message.`);
+        return NextResponse.json({ status: 'no_session' }, { status: 200 });
       }
+      
+      // Create session on-the-fly
+      const botMsgId = await sendTelegramMessage(chatId, FOLLOW_UP_PROMPT);
+      const messages: SessionMessage[] = [];
+      if (botMsgId) messages.push({ role: 'assistant', content: 'PROMPT', message_id: botMsgId });
+      
+      const pending: SessionMessage[] = [{ role: 'user', content: text, message_id: incomingMessageId, media_url: extractedMediaUrl }];
+      
+      await supabaseAdmin.from('sessions').insert({
+        alias: alias,
+        messages: messages,
+        pending_messages: pending,
+        status: 'active',
+        last_message_at: new Date().toISOString()
+      });
     } else {
-      // Existing session flow
-      const pendingArray: SessionMessage[] = (session.pending_messages as unknown as SessionMessage[]) || [];
-      pendingArray.push({ role: 'user', content: text, message_id: incomingMessageId, media_url: extractedMediaUrl });
-
+      // Existing Session
+      const messages: SessionMessage[] = (session.messages as any) || [];
+      const pending: SessionMessage[] = (session.pending_messages as any) || [];
+      
       if (isDoneTrigger) {
-        // WIPE SEQUENCE: Combine historic and pending arrays 
-        const combinedMessages: SessionMessage[] = [...(session.messages || []), ...pendingArray];
+        // --- SUBMISSION & WIPE SEQUENCE ---
+        const combined = [...messages, ...pending, { role: 'user', content: text, message_id: incomingMessageId }];
         
-        const compiledText = combinedMessages
-          .filter((m: SessionMessage) => m.role === 'user')
-          .map((m: SessionMessage) => m.content)
+        const compiledText = combined
+          .filter(m => m.role === 'user')
+          .map(m => m.content)
           .join('\n');
           
-        const mediaUrls = combinedMessages
-          .filter((m: SessionMessage) => m.media_url)
-          .map((m: SessionMessage) => m.media_url);
-        const finalMediaUrl = mediaUrls.length > 0 ? mediaUrls[0] : null;
-
-        // Route entire session block back into intelligence parser
-        const triageResult = await analyzeTip(compiledText);
-        const intelligenceData = {
-          ...triageResult,
-          raw_source_text: compiledText
-        };
-        const encryptedContent = encryptData(JSON.stringify(intelligenceData));
+        const mediaUrls = combined.filter(m => m.media_url).map(m => m.media_url);
         
+        // Triage (Gemini)
+        const triage = await analyzeTip(compiledText);
         await supabaseAdmin.from('tips').insert({
           alias: alias,
-          encrypted_content: encryptedContent,
-          category: triageResult.category,
-          priority: triageResult.priority,
-          media_url: finalMediaUrl
+          encrypted_content: encryptData(JSON.stringify({ ...triage, raw_source_text: compiledText })),
+          category: triage.category,
+          priority: triage.priority,
+          media_url: mediaUrls[0] || null
         });
 
-        // Trigger safe conclusion
-        const botMsgId = await sendTelegramMessage(chatId, "✅ Your report has been securely recorded and this chat will now be wiped.");
-        if (botMsgId) combinedMessages.push({ role: 'assistant', message_id: botMsgId, content: 'SYSTEM: WIPED', media_url: null });
-        
-        // Physically annihilate the paper trail loop
-        for (const msg of combinedMessages) {
-          if (msg.message_id) {
-            await deleteTelegramMessage(chatId, msg.message_id);
-          }
+        // Final deletion loop
+        const goodbyeId = await sendTelegramMessage(chatId, "✅ Your report has been securely recorded. This chat is now being wiped.");
+        if (goodbyeId) combined.push({ role: 'assistant', content: 'GOODBYE', message_id: goodbyeId });
+
+        // Physical Annihilation
+        for (const msg of combined) {
+          if (msg.message_id) await deleteTelegramMessage(chatId, msg.message_id);
         }
-        
-        // Nuke session node locally
-        if (session.id) {
-          await supabaseAdmin.from('sessions').delete().eq('id', session.id);
-        }
-        
+
+        await supabaseAdmin.from('sessions').delete().eq('id', session.id);
       } else {
-        // DEBOUNCE SEQUENCE: Push strictly to pending explicitly overwriting timestamps natively mapping asynchronous boundaries.
+        // --- NORMAL INTAKE ---
+        // 1. Send Instant Static Follow-up
+        const botMsgId = await sendTelegramMessage(chatId, FOLLOW_UP_PROMPT);
+        
+        // 2. Track all IDs
+        if (botMsgId) messages.push({ role: 'assistant', content: 'PROMPT', message_id: botMsgId });
+        pending.push({ role: 'user', content: text, message_id: incomingMessageId, media_url: extractedMediaUrl });
+        
         await supabaseAdmin.from('sessions')
           .update({ 
-            pending_messages: pendingArray,
+            messages: messages, 
+            pending_messages: pending,
             last_message_at: new Date().toISOString()
           })
-          .eq('id', session.id as string);
+          .eq('id', session.id);
       }
-    }
-    
-    // ----------------------------------------------------
-    // QSTASH REAL-TIME TRIGGER (Auto-Debounce)
-    // ----------------------------------------------------
-    try {
-      if (process.env.QSTASH_TOKEN && alias) {
-        const qstash = new QStashClient({ token: process.env.QSTASH_TOKEN });
-        const baseUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://inteldrop.vercel.app';
-        
-        await qstash.publishJSON({
-          url: `${baseUrl}/api/cron/heartbeat`,
-          body: { alias: alias },
-          delay: 10, // 10 second delay for natural debouncing
-          // Deduplication: prevents multiple AI triggers if the user sends multiple messages rapidly.
-          deduplicationId: `qstash_trigger_${alias}_${Math.floor(Date.now() / 10000)}` 
-        });
-        console.log(`[Webhook] QStash trigger scheduled for alias: ${alias}`);
-      }
-    } catch (qstashErr) {
-      console.error('[Webhook] QStash scheduling failed:', qstashErr);
     }
 
     return NextResponse.json({ status: 'success' }, { status: 200 });
     
-  } catch (error) {
-    const err = error as Error;
-    console.error('Webhook Parser Error:', err.message, err.stack);
-    
-    // Attempt sending error detail back to the same chat for instant transparent debugging.
-    try {
-      const errorChatId = body?.message?.chat?.id?.toString();
-      if (errorChatId) {
-        const botToken = process.env.TELEGRAM_BOT_TOKEN;
-        await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ chat_id: errorChatId, text: `❌ SYSTEM CRASH:\n\n${err.message}\n\nTrace: ${err.stack?.slice(0, 500)}` })
-        });
-      }
-    } catch (tgErr) {
-      console.error('Failed to send error notification to Telegram:', tgErr);
+  } catch (error: any) {
+    console.error('Webhook Error:', error.message);
+    const chatId = body?.message?.chat?.id?.toString();
+    if (chatId) {
+      await sendTelegramMessage(chatId, `❌ SYSTEM ERROR: ${error.message}\n\nPlease try again later.`);
     }
-
-    // Safe Debug Mode: Return 200 to Telegram to clear the queue
-    return NextResponse.json({ 
-      status: 'error_logged', 
-      detail: err.message,
-    }, { status: 200 });
+    return NextResponse.json({ status: 'error' }, { status: 200 });
   }
 }
 
 export async function GET() {
-  return new Response('TELEGRAM WEBHOOK RECEIVER: ONLINE', { status: 200 });
+  return new Response('INTELDROP WEBHOOK: ONLINE', { status: 200 });
 }
