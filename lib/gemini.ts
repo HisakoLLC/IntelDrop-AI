@@ -121,7 +121,7 @@ export async function generateFollowUpQuestion(conversationHistory: Message[]): 
   }
 
   const result = await ai.models.generateContent({
-    model: 'gemini-2.0-flash',
+    model: 'gemini-1.5-flash-8b',
     contents: squashedContents,
     config: {
       systemInstruction: CONVERSATION_PROMPT,
@@ -134,7 +134,7 @@ export async function generateFollowUpQuestion(conversationHistory: Message[]): 
 
 export async function analyzeTip(rawText: string) {
   const result = await ai.models.generateContent({
-    model: 'gemini-2.0-flash',
+    model: 'gemini-1.5-flash-8b',
     contents: [{ role: 'user', parts: [{ text: rawText }] }],
     config: {
       systemInstruction: SYSTEM_PROMPT,
