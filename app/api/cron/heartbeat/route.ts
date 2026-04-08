@@ -1,30 +1,81 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { generateFollowUpQuestion } from '@/lib/gemini';
+import { Receiver } from '@upstash/qstash';
 
-export async function GET() {
+export async function POST(req: Request) {
+  // 1. QSTASH SIGNATURE VERIFICATION
+  const currentSigningKey = process.env.QSTASH_CURRENT_SIGNING_KEY;
+  const nextSigningKey = process.env.QSTASH_NEXT_SIGNING_KEY;
+
+  if (currentSigningKey && nextSigningKey) {
+    const receiver = new Receiver({
+      currentSigningKey,
+      nextSigningKey,
+    });
+
+    const signature = req.headers.get('upstash-signature');
+    if (!signature) {
+      return NextResponse.json({ error: 'Missing QStash signature' }, { status: 401 });
+    }
+
+    const body = await req.text();
+    const isValid = await receiver.verify({
+      signature,
+      body,
+    });
+
+    if (!isValid) {
+      return NextResponse.json({ error: 'Invalid QStash signature' }, { status: 401 });
+    }
+
+    // Re-parse body for logic below
+    try {
+      const parsedBody = JSON.parse(body);
+      return await processHeartbeat(parsedBody.alias);
+    } catch (e) {
+      return NextResponse.json({ error: 'Body parsing failed' }, { status: 400 });
+    }
+  }
+
+  // Fallback if keys aren't set yet (for local debugging)
+  const body = await req.json().catch(() => ({}));
+  return await processHeartbeat(body.alias);
+}
+
+// Support GET for manual testing/legacy cron
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url);
+  const alias = searchParams.get('alias');
+  return await processHeartbeat(alias || undefined);
+}
+
+async function processHeartbeat(targetAlias?: string) {
   try {
     const now = new Date();
     const threshold = new Date(now.getTime() - 5000); // 5 seconds ago
 
-    const { data: sessions, error } = await supabaseAdmin
+    let query = supabaseAdmin
       .from('sessions')
       .select('*')
-      .eq('status', 'active')
-      .lt('last_message_at', threshold.toISOString());
+      .eq('status', 'active');
+
+    if (targetAlias) {
+      // Targeted mode: ignore threshold because QStash already handled the delay
+      query = query.eq('alias', targetAlias);
+    } else {
+      // Global cron mode: check all sessions that have been silent for 5s
+      query = query.lt('last_message_at', threshold.toISOString());
+    }
+
+    const { data: sessions, error } = await query;
 
     if (error) throw error;
     
     if (!sessions || sessions.length === 0) {
-      const { count: totalActive } = await supabaseAdmin
-        .from('sessions')
-        .select('*', { count: 'exact', head: true })
-        .eq('status', 'active');
-        
       return NextResponse.json({ 
-        status: 'no_pending_sessions', 
-        active_sessions_in_db: totalActive || 0,
-        threshold_used: threshold.toISOString()
+        status: 'no_pending_sessions',
+        target: targetAlias || 'global'
       });
     }
 
@@ -34,26 +85,22 @@ export async function GET() {
       try {
         const pending = session.pending_messages || [];
         if (pending.length === 0) {
-          // If no pending, update last_message_at to prevent re-scanning empty sessions
+          // If no pending, stop the heartbeat from picking up this session
           await supabaseAdmin.from('sessions').update({
-            last_message_at: null // Set to null effectively removes it from the .lt() filter
+            last_message_at: null
           }).eq('id', session.id);
           continue;
         }
 
-        // 1. Prepare combined history
         const updatedHistory = [...(session.messages || []), ...pending];
         
-        // 2. Generate AI Follow-up
         console.log(`[Heartbeat] Generating AI follow-up for alias: ${session.alias}`);
         const followUp = await generateFollowUpQuestion(updatedHistory);
         if (!followUp) throw new Error('AI generated an empty response');
 
-        // 3. Send Telegram Reply
         const telegramToken = process.env.TELEGRAM_BOT_TOKEN;
         if (!telegramToken) throw new Error('TELEGRAM_BOT_TOKEN missing');
         
-        // Find the Telegram ID from alias_map
         const { data: aliasMap, error: mapError } = await supabaseAdmin
           .from('alias_map')
           .select('encrypted_telegram_id')
@@ -66,14 +113,13 @@ export async function GET() {
         const chatId = decryptData(aliasMap.encrypted_telegram_id);
         if (chatId.includes('ERROR')) throw new Error('Chat ID decryption failed');
 
-        console.log(`[Heartbeat] Sending reply to chatId: ${chatId.slice(0, 5)}...`);
         const res = await fetch(`https://api.telegram.org/bot${telegramToken}/sendMessage`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
             chat_id: chatId, 
             text: followUp,
-            parse_mode: 'Markdown' // Added for better formatting
+            parse_mode: 'Markdown'
           })
         });
         
@@ -82,7 +128,6 @@ export async function GET() {
           throw new Error(`Telegram API Error: ${tgData.description || 'Unknown'}`);
         }
 
-        // 4. ATOMIC COMMIT: Only if everything above succeeded, we clear pending
         const finalHistory = [
           ...updatedHistory,
           {
@@ -92,13 +137,11 @@ export async function GET() {
           }
         ];
 
-        const { error: updateError } = await supabaseAdmin.from('sessions').update({
+        await supabaseAdmin.from('sessions').update({
           messages: finalHistory,
-          pending_messages: [], // Clear the queue
-          last_message_at: null  // Stop the heartbeat from picking up this session until new user message
+          pending_messages: [],
+          last_message_at: null 
         }).eq('id', session.id);
-
-        if (updateError) throw updateError;
 
         results.push({ alias: session.alias, success: true });
 

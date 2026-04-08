@@ -3,6 +3,7 @@ import { encryptData, hashData } from '@/lib/encryption';
 import { generateAlias } from '@/lib/alias';
 import { supabaseAdmin } from '@/lib/supabase';
 import { analyzeTip, transcribeAudio, analyzeImageTip } from '@/lib/gemini';
+import { Client as QStashClient } from '@upstash/qstash';
 // Removed static sharp import to prevent runtime architecture crashes on module load.
 
 interface TelegramMessage {
@@ -293,6 +294,27 @@ export async function POST(req: Request) {
       }
     }
     
+    // ----------------------------------------------------
+    // QSTASH REAL-TIME TRIGGER (Auto-Debounce)
+    // ----------------------------------------------------
+    try {
+      if (process.env.QSTASH_TOKEN && alias) {
+        const qstash = new QStashClient({ token: process.env.QSTASH_TOKEN });
+        const baseUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://inteldrop.vercel.app';
+        
+        await qstash.publishJSON({
+          url: `${baseUrl}/api/cron/heartbeat`,
+          body: { alias: alias },
+          delay: 10, // 10 second delay for natural debouncing
+          // Deduplication: prevents multiple AI triggers if the user sends multiple messages rapidly.
+          deduplicationId: `qstash_trigger_${alias}_${Math.floor(Date.now() / 10000)}` 
+        });
+        console.log(`[Webhook] QStash trigger scheduled for alias: ${alias}`);
+      }
+    } catch (qstashErr) {
+      console.error('[Webhook] QStash scheduling failed:', qstashErr);
+    }
+
     return NextResponse.json({ status: 'success' }, { status: 200 });
     
   } catch (error) {
