@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { GoogleGenAI } from '@google/genai';
 
 const ai = new GoogleGenAI({
@@ -19,7 +20,7 @@ interface SessionMessage {
 /**
  * Resilient wrapper for AI calls with exponential backoff and multi-tier model fallback.
  */
-async function callResilientAI(options: Record<string, unknown>, attempt = 1): Promise<any> {
+async function callResilientAI(options: Record<string, any>, attempt = 1): Promise<any> {
   // Rotate through models as attempts fail
   let modelToUse = PRIMARY_MODEL;
   if (attempt === 2) modelToUse = FALLBACK_1;
@@ -72,7 +73,7 @@ export async function generateFollowUpQuestion(messages: SessionMessage[]) {
     parts: [{ text: m.content || '[Media Content]' }]
   }));
 
-  const result = await callResilientAI({
+  const result: any = await callResilientAI({
     contents: squashedContents,
     config: {
       systemInstruction: CONVERSATION_PROMPT,
@@ -85,7 +86,7 @@ export async function generateFollowUpQuestion(messages: SessionMessage[]) {
 }
 
 export async function analyzeTip(rawText: string) {
-  const result = await callResilientAI({
+  const result: any = await callResilientAI({
     contents: [{ role: 'user', parts: [{ text: rawText }] }],
     config: {
       systemInstruction: SYSTEM_PROMPT,
@@ -101,7 +102,7 @@ export async function analyzeTip(rawText: string) {
 }
 
 export async function transcribeAudio(base64Audio: string, mimeType: string): Promise<string> {
-  const result = await callResilientAI({
+  const result: any = await callResilientAI({
     contents: [
       {
         role: 'user',
@@ -116,7 +117,7 @@ export async function transcribeAudio(base64Audio: string, mimeType: string): Pr
 }
 
 export async function analyzeImageTip(base64Image: string, mimeType: string): Promise<string> {
-  const result = await callResilientAI({
+  const result: any = await callResilientAI({
     contents: [
       {
         role: 'user',
