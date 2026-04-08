@@ -4,27 +4,33 @@ const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY,
 });
 
-const PRIMARY_MODEL = 'gemini-2.5-flash';
-const FALLBACK_MODEL = 'gemini-1.5-flash-latest'; // A confirmed stable fallback
+// 2026 Stable Model Hierarchy
+const PRIMARY_MODEL = 'gemini-2.0-flash-001';
+const FALLBACK_1 = 'gemini-2.5-flash';
+const FALLBACK_2 = 'gemini-3.1-flash-live-preview';
 
 /**
- * Resilient wrapper for AI calls with exponential backoff and model fallback.
+ * Resilient wrapper for AI calls with exponential backoff and multi-tier model fallback.
  */
 async function callResilientAI(options: any, attempt = 1): Promise<any> {
-  const modelToUse = attempt > 2 ? FALLBACK_MODEL : PRIMARY_MODEL;
+  // Rotate through models as attempts fail
+  let modelToUse = PRIMARY_MODEL;
+  if (attempt === 2) modelToUse = FALLBACK_1;
+  if (attempt >= 3) modelToUse = FALLBACK_2;
   
   try {
-    console.log(`[AI] Attempt ${attempt} using ${modelToUse}...`);
+    console.log(`[AI] Attempt ${attempt}/6 using ${modelToUse}...`);
     return await ai.models.generateContent({
       ...options,
       model: modelToUse
     });
   } catch (err: any) {
-    const isRetryable = err.message?.includes('503') || err.message?.includes('429');
+    const isRetryable = err.message?.includes('503') || err.message?.includes('429') || err.message?.includes('UNAVAILABLE');
     
-    if (isRetryable && attempt < 4) {
+    // Max 6 retries (~60s of persistence)
+    if (isRetryable && attempt < 6) {
       const delay = Math.pow(2, attempt) * 1000;
-      console.warn(`[AI] ${modelToUse} busy/throttled. Retrying in ${delay}ms...`);
+      console.warn(`[AI] ${modelToUse} busy or throttled. Retrying in ${delay}ms...`);
       await new Promise(resolve => setTimeout(resolve, delay));
       return callResilientAI(options, attempt + 1);
     }
