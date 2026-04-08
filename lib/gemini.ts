@@ -31,7 +31,7 @@ async function callResilientAI(options: Record<string, any>, attempt = 1): Promi
     return await ai.models.generateContent({
       ...options,
       model: modelToUse
-    });
+    } as any);
   } catch (err: unknown) {
     const errorMessage = err instanceof Error ? err.message : String(err);
     const isRetryable = errorMessage.includes('503') || 
