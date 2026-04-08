@@ -121,7 +121,7 @@ export async function generateFollowUpQuestion(conversationHistory: Message[]): 
   }
 
   const result = await ai.models.generateContent({
-    model: 'gemini-1.5-flash',
+    model: 'gemini-2.0-flash',
     contents: squashedContents,
     config: {
       systemInstruction: CONVERSATION_PROMPT,
@@ -134,7 +134,7 @@ export async function generateFollowUpQuestion(conversationHistory: Message[]): 
 
 export async function analyzeTip(rawText: string) {
   const result = await ai.models.generateContent({
-    model: 'gemini-1.5-flash',
+    model: 'gemini-2.0-flash',
     contents: [{ role: 'user', parts: [{ text: rawText }] }],
     config: {
       systemInstruction: SYSTEM_PROMPT,
@@ -148,7 +148,7 @@ export async function analyzeTip(rawText: string) {
 
 export async function transcribeAudio(base64Audio: string, mimeType: string): Promise<string> {
   const result = await ai.models.generateContent({
-    model: 'gemini-1.5-flash',
+    model: 'gemini-2.0-flash',
     contents: [
       {
         role: 'user',
