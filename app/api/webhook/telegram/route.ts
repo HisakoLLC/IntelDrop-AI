@@ -240,7 +240,18 @@ export async function POST(req: Request) {
       
       if (isDoneTrigger) {
         // --- SUBMISSION & WIPE SEQUENCE ---
-        const combined = [...messages, ...pending, { role: 'user', content: text, message_id: incomingMessageId }];
+        
+        // FRESH FETCH: Ensure we have any operator replies that arrived during this request
+        const { data: latestSession } = await supabaseAdmin
+          .from('sessions')
+          .select('*')
+          .eq('id', session.id)
+          .single();
+        
+        const latestMessages: SessionMessage[] = (latestSession?.messages as any) || messages;
+        const latestPending: SessionMessage[] = (latestSession?.pending_messages as any) || pending;
+
+        const combined = [...latestMessages, ...latestPending, { role: 'user', content: text, message_id: incomingMessageId }];
         
         const compiledText = combined
           .filter(m => m.role === 'user')
