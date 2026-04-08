@@ -169,17 +169,20 @@ export async function POST(req: Request) {
       // Physically remove the command text from user view
       await deleteTelegramMessage(chatId, incomingMessageId);
       
-      // Initialize/Reset session with the welcome message ID for deletion tracking
+      // Initialize fresh session for this interaction (Clear slate protocol)
       const newMessages: SessionMessage[] = [];
       if (welcomeId) newMessages.push({ role: 'assistant', content: 'WELCOME', message_id: welcomeId });
       
-      await supabaseAdmin.from('sessions').upsert({
+      // Delete any pre-existing active sessions for this alias to ensure we start tracking from a clean state
+      await supabaseAdmin.from('sessions').delete().eq('alias', alias);
+      
+      await supabaseAdmin.from('sessions').insert({
         alias: alias,
         messages: newMessages,
         pending_messages: [],
         status: 'active',
         last_message_at: new Date().toISOString()
-      }, { onConflict: 'alias' });
+      });
       
       return NextResponse.json({ status: 'welcome_sent' }, { status: 200 });
     }
@@ -258,11 +261,15 @@ export async function POST(req: Request) {
 
         // Final deletion loop
         const goodbyeId = await sendTelegramMessage(chatId, "✅ Your report has been securely recorded. This chat is now being wiped.");
-        if (goodbyeId) combined.push({ role: 'assistant', content: 'GOODBYE', message_id: goodbyeId });
+        
+        // Use a Set to ensure unique IDs and avoid redundant delete calls
+        const allMessageIds = new Set<number>();
+        combined.forEach(m => { if (m.message_id) allMessageIds.add(m.message_id); });
+        if (goodbyeId) allMessageIds.add(goodbyeId);
 
-        // Physical Annihilation
-        for (const msg of combined) {
-          if (msg.message_id) await deleteTelegramMessage(chatId, msg.message_id);
+        // Physical Annihilation (Serial to ensure completion)
+        for (const mid of Array.from(allMessageIds)) {
+          await deleteTelegramMessage(chatId, mid);
         }
 
         await supabaseAdmin.from('sessions').delete().eq('id', session.id);
