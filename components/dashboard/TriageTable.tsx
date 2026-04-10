@@ -85,12 +85,13 @@ export default function TriageTable({ initialTips }: { initialTips: Tip[] }) {
           </tbody>
         </table>
       </div>
-
+      {/* 
       <ReplyModal 
         isOpen={!!activeReplyAlias} 
         alias={activeReplyAlias} 
         onClose={() => setActiveReplyAlias(null)} 
       />
+      */}
     </>
   )
 }
