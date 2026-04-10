@@ -1,5 +1,6 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 
 type ReplyModalProps = {
   alias: string | null
@@ -11,8 +12,14 @@ export default function ReplyModal({ alias, isOpen, onClose }: ReplyModalProps) 
   const [message, setMessage] = useState('')
   const [status, setStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle')
   const [errorText, setErrorText] = useState('')
+  const [mounted, setMounted] = useState(false)
 
-  if (!isOpen || !alias) return null;
+  // Ensure portal only renders on client side to avoid hydration mismatch
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  if (!isOpen || !alias || !mounted) return null;
 
   const handleSend = async () => {
     if (!message.trim()) return;
@@ -44,8 +51,8 @@ export default function ReplyModal({ alias, isOpen, onClose }: ReplyModalProps) 
     }
   }
 
-  return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50 font-mono">
+  const modalContent = (
+    <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-[9999] font-mono">
       <div className="bg-black border-[3px] border-white w-full max-w-lg p-6 relative shadow-[8px_8px_0px_0px_rgba(255,255,255,1)]">
         <div className="absolute top-0 right-0 border-b-[3px] border-l-[3px] border-white bg-white text-black px-3 py-1 text-xs font-black uppercase tracking-widest">
           Transmitter
@@ -91,5 +98,7 @@ export default function ReplyModal({ alias, isOpen, onClose }: ReplyModalProps) 
         </div>
       </div>
     </div>
-  )
+  );
+
+  return createPortal(modalContent, document.body);
 }
