@@ -1,5 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 
 type ReplyModalProps = {
   alias: string | null
@@ -88,7 +89,5 @@ export default function ReplyModal({ alias, isOpen, onClose }: ReplyModalProps) 
     </div>
   );
 
-  return typeof document !== 'undefined' 
-    ? require('react-dom').createPortal(modalContent, document.body) 
-    : null;
+  return mounted ? createPortal(modalContent, document.body) : null;
 }
