@@ -52,7 +52,18 @@ export default function ReplyModal({ alias, isOpen, onClose }: ReplyModalProps) 
   }
 
   const modalContent = (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-[9999] font-mono">
+    <div 
+      className="fixed inset-0 flex items-center justify-center p-4 font-mono"
+      style={{ 
+        zIndex: 99999, 
+        backgroundColor: 'rgba(0, 0, 0, 0.85)',
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0
+      }}
+    >
       <div className="bg-black border-[3px] border-white w-full max-w-lg p-6 relative shadow-[8px_8px_0px_0px_rgba(255,255,255,1)]">
         <div className="absolute top-0 right-0 border-b-[3px] border-l-[3px] border-white bg-white text-black px-3 py-1 text-xs font-black uppercase tracking-widest">
           Transmitter
