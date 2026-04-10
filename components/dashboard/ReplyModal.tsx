@@ -1,6 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
-import { createPortal } from 'react-dom'
+import { useState } from 'react'
 
 type ReplyModalProps = {
   alias: string | null
@@ -12,14 +11,8 @@ export default function ReplyModal({ alias, isOpen, onClose }: ReplyModalProps) 
   const [message, setMessage] = useState('')
   const [status, setStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle')
   const [errorText, setErrorText] = useState('')
-  const [mounted, setMounted] = useState(false)
 
-  // Ensure portal only renders on client side to avoid hydration mismatch
-  useEffect(() => {
-    setMounted(true)
-  }, [])
-
-  if (!isOpen || !alias || !mounted) return null;
+  if (!isOpen || !alias) return null;
 
   const handleSend = async () => {
     if (!message.trim()) return;
@@ -51,20 +44,16 @@ export default function ReplyModal({ alias, isOpen, onClose }: ReplyModalProps) 
     }
   }
 
-  const modalContent = (
-    <div 
-      className="fixed inset-0 flex items-center justify-center p-4 font-mono"
-      style={{ 
-        zIndex: 99999, 
-        backgroundColor: 'rgba(0, 0, 0, 0.85)',
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0
-      }}
-    >
-      <div className="bg-black border-[3px] border-white w-full max-w-lg p-6 relative shadow-[8px_8px_0px_0px_rgba(255,255,255,1)]">
+  return (
+    <div className="fixed inset-0 flex items-center justify-center p-4 z-[99999] pointer-events-auto">
+      {/* Backdrop */}
+      <div 
+        className="absolute inset-0 bg-black/90 backdrop-blur-sm" 
+        onClick={onClose}
+      />
+      
+      {/* Modal Content */}
+      <div className="bg-black border-[3px] border-white w-full max-w-lg p-6 relative shadow-[8px_8px_0px_0px_rgba(255,255,255,1)] z-[100000]">
         <div className="absolute top-0 right-0 border-b-[3px] border-l-[3px] border-white bg-white text-black px-3 py-1 text-xs font-black uppercase tracking-widest">
           Transmitter
         </div>
@@ -110,6 +99,4 @@ export default function ReplyModal({ alias, isOpen, onClose }: ReplyModalProps) 
       </div>
     </div>
   );
-
-  return createPortal(modalContent, document.body);
 }
