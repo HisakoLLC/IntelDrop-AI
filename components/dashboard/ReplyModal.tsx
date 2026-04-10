@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 type ReplyModalProps = {
   alias: string | null
@@ -11,6 +11,10 @@ export default function ReplyModal({ alias, isOpen, onClose }: ReplyModalProps) 
   const [message, setMessage] = useState('')
   const [status, setStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle')
   const [errorText, setErrorText] = useState('')
+
+  useEffect(() => {
+    if (isOpen) console.log(`[Transmitter] Active for: ${alias}`);
+  }, [isOpen, alias])
 
   if (!isOpen || !alias) return null;
 
@@ -35,7 +39,7 @@ export default function ReplyModal({ alias, isOpen, onClose }: ReplyModalProps) 
       setTimeout(() => {
         setStatus('idle')
         onClose()
-      }, 2000)
+      }, 1500)
     } catch(err: unknown) {
       console.error(err)
       const message = err instanceof Error ? err.message : 'System Dispatch Error'
@@ -45,58 +49,33 @@ export default function ReplyModal({ alias, isOpen, onClose }: ReplyModalProps) 
   }
 
   return (
-    <div className="fixed inset-0 flex items-center justify-center p-4 z-[99999] pointer-events-auto">
-      {/* Backdrop */}
-      <div 
-        className="absolute inset-0 bg-black/90 backdrop-blur-sm" 
-        onClick={onClose}
-      />
-      
-      {/* Modal Content */}
-      <div className="bg-black border-[3px] border-white w-full max-w-lg p-6 relative shadow-[8px_8px_0px_0px_rgba(255,255,255,1)] z-[100000]">
-        <div className="absolute top-0 right-0 border-b-[3px] border-l-[3px] border-white bg-white text-black px-3 py-1 text-xs font-black uppercase tracking-widest">
-          Transmitter
-        </div>
-        
-        <h2 className="text-2xl font-black uppercase mb-2">Reply to Source</h2>
-        <p className="text-sm font-bold opacity-70 mb-6 uppercase tracking-widest">Routing Alias: <span className="text-white opacity-100">{alias}</span></p>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90">
+      <div className="bg-black border-[4px] border-white w-full max-w-lg p-8 relative">
+        <h2 className="text-3xl font-black uppercase mb-4 underline">Reply to Source</h2>
+        <p className="text-sm font-bold opacity-70 mb-6">TARGET: {alias}</p>
         
         <textarea
+          autoFocus
           value={message}
           onChange={(e) => setMessage(e.target.value)}
-          placeholder="ENTER SECURE MESSAGE FOR SOURCE..."
-          className="w-full bg-black text-white border-[3px] border-white p-4 h-32 focus:outline-none focus:ring-2 focus:ring-white mb-4 placeholder-white/50"
-          disabled={status === 'sending' || status === 'success'}
+          placeholder="ENTER SECURE MESSAGE..."
+          className="w-full bg-black text-white border-[3px] border-white p-4 h-40 focus:outline-none mb-6"
         />
         
-        {status === 'error' && (
-          <div className="border-[3px] border-white bg-black p-3 mb-4 text-sm font-bold uppercase">
-            ERROR: {errorText}
-          </div>
-        )}
+        {status === 'error' && <p className="mb-4 text-white font-bold">ERROR: {errorText}</p>}
+        {status === 'success' && <p className="mb-4 text-white font-black uppercase text-center border-2 border-white p-2">SENT SECURELY</p>}
         
-        {status === 'success' && (
-          <div className="border-[3px] border-white bg-white text-black p-3 mb-4 text-sm font-black uppercase tracking-widest text-center">
-            MESSAGE DISPATCHED SECURELY
-          </div>
-        )}
-        
-        <div className="flex justify-end gap-4">
-          <button 
-            onClick={onClose}
-            className="px-6 py-2 border-[3px] border-white font-black uppercase tracking-widest hover:bg-white hover:text-black transition-colors"
-          >
-            Cancel
-          </button>
+        <div className="flex justify-end gap-6 text-sm">
+          <button onClick={onClose} className="font-bold uppercase tracking-widest hover:underline">Discard</button>
           <button 
             onClick={handleSend}
-            disabled={status === 'sending' || status === 'success'}
-            className="px-6 py-2 border-[3px] border-white bg-white text-black font-black uppercase tracking-widest hover:bg-black hover:text-white transition-colors disabled:opacity-50 shadow-[4px_4px_0px_0px_rgba(255,255,255,1)]"
+            disabled={status !== 'idle'}
+            className="bg-white text-black px-8 py-3 font-black uppercase tracking-widest hover:bg-black hover:text-white border-[3px] border-white transition-all disabled:opacity-30"
           >
-            {status === 'sending' ? 'Transmitting...' : 'Execute Dispatch'}
+            {status === 'sending' ? 'Sending...' : 'Transmit'}
           </button>
         </div>
       </div>
     </div>
-  );
+  )
 }
