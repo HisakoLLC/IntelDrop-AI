@@ -21,7 +21,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Missing specific node parameters payload.' }, { status: 400 });
     }
     
-    // 1. Fetch the encrypted_telegram_id and existing session messages
+    // 1. Fetch the encrypted_telegram_id from alias_map
     const { data: routeData, error: mapError } = await supabaseAdmin
       .from('alias_map')
       .select('encrypted_telegram_id')
@@ -32,13 +32,6 @@ export async function POST(req: Request) {
       console.error('Failed locating deterministic map:', mapError);
       return NextResponse.json({ error: 'Unknown Alias Target' }, { status: 404 });
     }
-
-    const { data: session } = await supabaseAdmin
-      .from('sessions')
-      .select('*')
-      .eq('alias', alias)
-      .eq('status', 'active')
-      .single();
     
     const telegramToken = process.env.TELEGRAM_BOT_TOKEN;
     if (!telegramToken) {
@@ -54,16 +47,17 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Failed Target Decryption' }, { status: 500 });
     }
     
-    const transmitMsg = `[INTELDROP SECURE OPERATOR]:\n\n${message}`;
+    // 3. User requested specific prefixing
+    const transmitMsg = `Secure message from our team: ${message}`;
     
-    // 3. Send the message to the chat_id via Telegram Bot API
+    // 4. Send the message to the chat_id via Telegram Bot API
     const telRes = await fetch(`https://api.telegram.org/bot${telegramToken}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ chat_id: chatId, text: transmitMsg })
     });
     
-    // 4. CRITICAL: Immediate memory destructure (exists <100ms)
+    // 5. CRITICAL: Immediate memory destructure (exists <100ms)
     chatId = null; 
     
     const telData = await telRes.json();
@@ -74,7 +68,13 @@ export async function POST(req: Request) {
 
     const newMessageId = telData.result.message_id;
 
-    // 5. TRACK THE OPERATOR MESSAGE ID FOR WIPING
+    // 6. LOG TO REPLIES TABLE (NEW REQUIREMENT)
+    await supabaseAdmin.from('replies').insert({
+      alias: alias,
+      message_sent: message
+    });
+
+    // 7. TRACK FOR NUKE WIPING ( EXISTING REQUIREMENT)
     if (newMessageId) {
       // Re-fetch session to ensure we have the absolute latest state
       const { data: latestSession } = await supabaseAdmin
@@ -89,7 +89,7 @@ export async function POST(req: Request) {
         messages.push({ role: 'assistant', content: 'OPERATOR_REPLY', message_id: newMessageId });
         await supabaseAdmin.from('sessions').update({ messages: messages }).eq('id', latestSession.id);
       } else {
-        // AUTO-ANCHOR: Create a session just to track this message if none exists
+        // AUTO-ANCHOR fallback
         await supabaseAdmin.from('sessions').insert({
           alias: alias,
           messages: [{ role: 'assistant', content: 'OPERATOR_REPLY', message_id: newMessageId }],
@@ -98,7 +98,6 @@ export async function POST(req: Request) {
           last_message_at: new Date().toISOString()
         });
       }
-      console.log(`[Dashboard] Locked Operator Reply ID: ${newMessageId} for alias: ${alias}`);
     }
     
     return NextResponse.json({ status: 'sent', message: 'Payload Dispatched SECURELY' }, { status: 200 });

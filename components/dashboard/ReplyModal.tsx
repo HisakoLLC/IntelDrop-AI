@@ -57,7 +57,7 @@ export default function ReplyModal({ alias, isOpen, onClose }: ReplyModalProps) 
         <textarea
           value={message}
           onChange={(e) => setMessage(e.target.value)}
-          placeholder="ENTER MESSAGE PAYLOAD..."
+          placeholder="ENTER SECURE MESSAGE FOR SOURCE..."
           className="w-full bg-black text-white border-[3px] border-white p-4 h-32 focus:outline-none focus:ring-2 focus:ring-white mb-4 placeholder-white/50"
           disabled={status === 'sending' || status === 'success'}
         />
