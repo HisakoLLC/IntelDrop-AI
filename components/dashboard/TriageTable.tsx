@@ -1,13 +1,18 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import type { Tip } from '@/actions/tips'
 import ReplyModal from './ReplyModal'
 import TipDetailModal from './TipDetailModal'
 
 export default function TriageTable({ initialTips }: { initialTips: Tip[] }) {
+  const [mounted, setMounted] = useState(false)
   const [tips] = useState<Tip[]>(initialTips)
   const [activeReplyAlias, setActiveReplyAlias] = useState<string | null>(null)
   const [selectedTip, setSelectedTip] = useState<Tip | null>(null)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   const getPriorityClass = (priority: string | null) => {
     switch (priority?.toLowerCase()) {
@@ -40,6 +45,17 @@ export default function TriageTable({ initialTips }: { initialTips: Tip[] }) {
       <div className="flex flex-col items-center justify-center py-24 border-[3px] border-dashed border-white/50">
         <div className="text-4xl mb-4 font-black tracking-tighter opacity-50">NO DATA</div>
         <p className="text-sm uppercase tracking-widest font-bold opacity-50">The intelligence queue is currently empty.</p>
+      </div>
+    )
+  }
+
+  // To prevent hydration mismatch, we render a shell or null until mounted
+  // However, for SEO/initial load, we can render the table structure but skip interactivity
+  // For simplicity and to fix the crash, we'll use the mounted check.
+  if (!mounted) {
+    return (
+      <div className="animate-pulse border-[3px] border-white p-12 text-center uppercase font-black tracking-widest">
+        Synchronizing Secure Interface...
       </div>
     )
   }
