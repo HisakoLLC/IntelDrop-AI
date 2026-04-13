@@ -18,13 +18,16 @@ export default function TipDetailModal({ tip, onClose }: TipDetailModalProps) {
 
   useEffect(() => {
     setMounted(true)
+  }, [])
+
+  useEffect(() => {
     if (tip) {
       setStatus(tip.status || 'New')
       setNotes(tip.notes || '')
     }
   }, [tip])
 
-  if (!tip || !mounted) return null
+  if (!mounted || !tip) return null
 
   const handleSave = async () => {
     setIsSaving(true)
