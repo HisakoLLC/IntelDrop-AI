@@ -1,9 +1,10 @@
 import { getInsightMetrics } from '@/actions/insights'
 import InboxVolumeChart from '@/components/dashboard/InboxVolumeChart'
 import CategoryDonutChart from '@/components/dashboard/CategoryDonutChart'
+import InsightsSummary from '@/components/dashboard/InsightsSummary'
 
 export default async function InsightsPage() {
-  const { volumeData, categoryData } = await getInsightMetrics()
+  const { volumeData, categoryData, summary } = await getInsightMetrics()
 
   return (
     <div className="space-y-8">
@@ -14,8 +15,9 @@ export default async function InsightsPage() {
         </p>
       </header>
       
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4">
-        {/* White backgrounds invert the components safely executing intense monochrome parameters locally! */}
+      <InsightsSummary summary={summary} />
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         <section className="border-[3px] border-white p-6 shadow-[8px_8px_0px_0px_rgba(255,255,255,1)] bg-white text-black relative">
           <div className="absolute top-0 right-0 border-b-[3px] border-l-[3px] border-black bg-black py-1 px-3">
              <span className="text-xs font-black tracking-widest text-white uppercase">30-Day Rolling</span>
