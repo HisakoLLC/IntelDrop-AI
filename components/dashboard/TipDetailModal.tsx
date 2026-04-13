@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
+import Image from 'next/image'
 import type { Tip } from '@/actions/tips'
 import { updateTipMetadata } from '@/actions/tips'
 
@@ -97,13 +98,13 @@ export default function TipDetailModal({ tip, onClose }: TipDetailModalProps) {
               <section>
                 <h3 className="text-xs font-black uppercase tracking-[0.3em] text-white/40 mb-4 border-b border-white/20 pb-2">Intelligence Summary</h3>
                 <p className="text-sm leading-relaxed border-l-2 border-white pl-4 italic text-white/80">
-                  "{tip.decrypted_summary}"
+                  &quot;{tip.decrypted_summary}&quot;
                 </p>
               </section>
 
               <section>
                 <h3 className="text-xs font-black uppercase tracking-[0.3em] text-white/40 mb-4 border-b border-white/20 pb-2">Original Translated Source</h3>
-                <div className="bg-white/5 p-4 text-sm leading-relaxed max-h-[300px] overflow-y-auto whitespace-pre-wrap border border-white/10 italic">
+                <div className="bg-white/5 p-4 text-sm leading-relaxed max-h-[300px] overflow-y-auto whitespace-pre-wrap border border-white/10 italic text-white/70">
                   {tip.decrypted_original}
                 </div>
               </section>
@@ -112,8 +113,13 @@ export default function TipDetailModal({ tip, onClose }: TipDetailModalProps) {
                 <section>
                   <h3 className="text-xs font-black uppercase tracking-[0.3em] text-white/40 mb-4 border-b border-white/20 pb-2">Attached Evidence</h3>
                   <div className="relative group border-[2px] border-white/20 aspect-video overflow-hidden">
-                    <img src={tip.media_url} alt="Telemetry Evidence" className="w-full h-full object-cover" />
-                    <div className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Image 
+                      src={tip.media_url} 
+                      alt="Telemetry Evidence" 
+                      fill
+                      className="object-cover"
+                    />
+                    <div className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10 text-white">
                       <a 
                         href={tip.media_url} 
                         download={`evidence_${tip.alias}.jpg`}
