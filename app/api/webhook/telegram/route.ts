@@ -4,6 +4,7 @@ import { encryptData, hashData } from '@/lib/encryption';
 import { generateAlias } from '@/lib/alias';
 import { supabaseAdmin } from '@/lib/supabase';
 import { analyzeTip, transcribeAudio, analyzeImageTip } from '@/lib/gemini';
+import { checkRateLimit } from '@/lib/rate-limit';
 
 interface TelegramMessage {
   message_id: number;
@@ -159,6 +160,13 @@ export async function POST(req: Request) {
         encrypted_telegram_id: encryptData(chatId),
         hmac_id: hashedId
       });
+    }
+
+    // --- RATE LIMIT CHECK ---
+    const { isLimited } = await checkRateLimit(alias);
+    if (isLimited) {
+      await sendTelegramMessage(chatId, "⚠️ You have reached the message limit for this hour. Please try again later.");
+      return NextResponse.json({ status: 'rate_limited' }, { status: 200 });
     }
 
     // 1. HANDLE /START (Welcome + Track ID)
