@@ -56,7 +56,8 @@ Return ONLY valid JSON in this format:
   "category": "Corruption" | "Crime" | "Corporate" | "Other",
   "priority": "High" | "Medium" | "Low" | "Spam",
   "summary": "one sentence summary",
-  "risk_assessment": "short risk note"
+  "risk_assessment": "short risk note",
+  "original_language": "Detected language (e.g. English, Swahili, Russian)"
 }
 If the submission is a greeting, casual conversation, random text, or irrelevant to intelligence (e.g. asking about weekend plans), set priority to "Spam" and category to "Other".`;
 

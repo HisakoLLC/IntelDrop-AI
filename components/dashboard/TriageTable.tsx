@@ -2,26 +2,35 @@
 import { useState } from 'react'
 import type { Tip } from '@/actions/tips'
 import ReplyModal from './ReplyModal'
+import TipDetailModal from './TipDetailModal'
 
 export default function TriageTable({ initialTips }: { initialTips: Tip[] }) {
   const [tips] = useState<Tip[]>(initialTips)
   const [activeReplyAlias, setActiveReplyAlias] = useState<string | null>(null)
+  const [selectedTip, setSelectedTip] = useState<Tip | null>(null)
 
-  // Mapping strict font weights matching structural payload logic natively inside Tailwind.
   const getPriorityClass = (priority: string | null) => {
-    switch (priority?.toUpperCase()) {
-      case 'HIGH': 
-        return 'font-black'
-      case 'MEDIUM': 
-        return 'font-normal'
-      case 'LOW': 
-        return 'font-light opacity-70'
+    switch (priority?.toLowerCase()) {
+      case 'high': 
+        return 'font-black text-white'
+      case 'medium': 
+        return 'font-bold opacity-80 text-white/90'
+      case 'low': 
+        return 'font-light opacity-60'
       default: 
         return 'font-normal'
     }
   }
 
-  // Simplified formatting matching monochrome terminal arrays visually 
+  const getStatusClass = (status: string) => {
+    switch (status) {
+      case 'New': return 'bg-white text-black font-black'
+      case 'Under Review': return 'border border-white text-white font-bold'
+      case 'Closed': return 'opacity-30 line-through'
+      default: return ''
+    }
+  }
+
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleString()
   }
@@ -40,10 +49,11 @@ export default function TriageTable({ initialTips }: { initialTips: Tip[] }) {
       <div className="overflow-x-auto border-[3px] border-white shadow-[4px_4px_0px_0px_rgba(255,255,255,1)]">
         <table className="w-full text-left font-mono text-sm border-collapse bg-black">
           <thead>
-            <tr className="border-b-[3px] border-white bg-white text-black uppercase tracking-widest font-black">
+            <tr className="border-b-[3px] border-white bg-white text-black uppercase tracking-[0.2em] font-black text-[10px]">
+              <th className="p-4 border-r-[3px] border-black">Status</th>
               <th className="p-4 border-r-[3px] border-black">Alias</th>
               <th className="p-4 border-r-[3px] border-black">Priority</th>
-              <th className="p-4 border-r-[3px] border-black whitespace-nowrap">Category</th>
+              <th className="p-4 border-r-[3px] border-black">Category</th>
               <th className="p-4 border-r-[3px] border-black max-w-[400px]">Intelligence Summary</th>
               <th className="p-4 border-r-[3px] border-black">Timestamp</th>
               <th className="p-4 bg-white text-black">Action</th>
@@ -51,8 +61,19 @@ export default function TriageTable({ initialTips }: { initialTips: Tip[] }) {
           </thead>
           <tbody>
             {tips.map((tip) => (
-              <tr key={tip.id} className="border-b border-white/30 hover:bg-white/5 transition-colors">
-                <td className="p-4 border-r border-white/30 font-bold whitespace-nowrap">{tip.alias}</td>
+              <tr 
+                key={tip.id} 
+                onClick={() => setSelectedTip(tip)}
+                className="border-b border-white/30 hover:bg-white/10 transition-colors cursor-pointer group"
+              >
+                <td className="p-4 border-r border-white/30">
+                  <span className={`px-2 py-0.5 text-[9px] uppercase tracking-widest ${getStatusClass(tip.status)}`}>
+                    {tip.status}
+                  </span>
+                </td>
+                <td className="p-4 border-r border-white/30 font-bold whitespace-nowrap group-hover:underline">
+                  {tip.alias}
+                </td>
                 <td className={`p-4 border-r border-white/30 uppercase tracking-wider ${getPriorityClass(tip.priority)}`}>
                   {tip.priority || 'UNRATED'}
                 </td>
@@ -60,19 +81,14 @@ export default function TriageTable({ initialTips }: { initialTips: Tip[] }) {
                   {tip.category || 'UNCLASSIFIED'}
                 </td>
                 <td className="p-4 border-r border-white/30 max-w-[400px] leading-relaxed">
-                  <div className="line-clamp-4" title={tip.decrypted_summary}>
+                  <div className="line-clamp-2 text-xs opacity-80" title={tip.decrypted_summary}>
                     {tip.decrypted_summary}
                   </div>
-                  {tip.media_url && (
-                    <a href={tip.media_url} target="_blank" rel="noreferrer" className="block mt-3 text-[11px] font-bold underline uppercase tracking-widest hover:text-white/70">
-                      [View Attached Evidence]
-                    </a>
-                  )}
                 </td>
                 <td className="p-4 border-r border-white/30 whitespace-nowrap opacity-70 text-xs text-right">
                   {formatDate(tip.created_at)}
                 </td>
-                <td className="p-4 whitespace-nowrap text-center">
+                <td className="p-4 whitespace-nowrap text-center" onClick={(e) => e.stopPropagation()}>
                   <button 
                     onClick={() => setActiveReplyAlias(tip.alias)}
                     className="border-[2px] border-white px-3 py-1 font-bold uppercase tracking-widest hover:bg-white hover:text-black transition-colors text-xs"
@@ -90,6 +106,11 @@ export default function TriageTable({ initialTips }: { initialTips: Tip[] }) {
         isOpen={!!activeReplyAlias} 
         alias={activeReplyAlias} 
         onClose={() => setActiveReplyAlias(null)} 
+      />
+
+      <TipDetailModal 
+        tip={selectedTip}
+        onClose={() => setSelectedTip(null)}
       />
     </>
   )
