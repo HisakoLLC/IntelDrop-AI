@@ -90,6 +90,18 @@ async function seed() {
   for (const tip of DEMO_TIPS) {
     console.log(`Seeding case: ${tip.alias}...`);
     
+    // 1. Create Alias Mapping (Required for Reply/Revocation testing)
+    const { error: aliasError } = await supabase.from('alias_map').insert({
+      alias: tip.alias,
+      encrypted_telegram_id: encryptData('DUMMY_TELEGRAM_ID_FOR_QA_TESTING'),
+      hmac_id: `QA_HASH_${tip.alias}`,
+      last_contact_at: new Date().toISOString()
+    });
+
+    if (aliasError && !aliasError.message.includes('already exists')) {
+      console.warn(`[Warning] Alias mapping for ${tip.alias} failed:`, aliasError.message);
+    }
+
     const encrypted = encryptData(JSON.stringify(tip.content));
 
     const { error } = await supabase.from('tips').insert({

@@ -267,59 +267,68 @@ export async function POST(req: Request) {
       if (isDoneTrigger) {
         // --- SUBMISSION & WIPE SEQUENCE ---
         
-        // FRESH FETCH: Ensure we have any operator replies that arrived during this request
-        const { data: latestSession } = await supabaseAdmin
-          .from('sessions')
-          .select('*')
-          .eq('id', session.id)
-          .single();
-        
-        const latestMessages: SessionMessage[] = (latestSession?.messages as any) || messages;
-        const latestPending: SessionMessage[] = (latestSession?.pending_messages as any) || pending;
+        // 1. Send immediate receipt to prevent Telegram Webhook timeout
+        await sendTelegramMessage(chatId, "✅ Your report is being securely processed. The conversation will be wiped momentarily.");
 
-        const combined = [...latestMessages, ...latestPending, { role: 'user', content: text, message_id: incomingMessageId }];
-        
-        const compiledText = combined
-          .filter(m => m.role === 'user')
-          .map(m => m.content)
-          .join('\n');
-          
-        const mediaUrls = combined.filter(m => m.media_url).map(m => m.media_url);
-        
-        // Triage (Gemini)
-        const triage = await analyzeTip(compiledText);
-        
-        if (triage.category === "Spam / Unrelated") {
-          console.log(`[Webhook] Spam detected for alias ${alias}. Logging to spam_log.`);
-          await supabaseAdmin.from('spam_log').insert({
-            alias,
-            created_at: new Date().toISOString()
-          });
-        } else {
-          await supabaseAdmin.from('tips').insert({
-            alias: alias,
-            encrypted_content: encryptData(JSON.stringify({ ...triage, raw_source_text: compiledText })),
-            category: triage.category,
-            priority: triage.priority,
-            media_url: mediaUrls[0] || null,
-            status: 'New'
-          });
-        }
+        after(async () => {
+          try {
+            // FRESH FETCH: Ensure we have any operator replies that arrived during this request
+            const { data: latestSession } = await supabaseAdmin
+              .from('sessions')
+              .select('*')
+              .eq('id', session.id)
+              .single();
+            
+            const latestMessages: SessionMessage[] = (latestSession?.messages as any) || messages;
+            const latestPending: SessionMessage[] = (latestSession?.pending_messages as any) || pending;
 
-        // Final deletion loop
-        const goodbyeId = await sendTelegramMessage(chatId, "✅ Your report has been securely recorded. This chat is now being wiped.");
-        
-        // Use a Set to ensure unique IDs and avoid redundant delete calls
-        const allMessageIds = new Set<number>();
-        combined.forEach(m => { if (m.message_id) allMessageIds.add(m.message_id); });
-        if (goodbyeId) allMessageIds.add(goodbyeId);
+            const combined = [...latestMessages, ...latestPending, { role: 'user', content: text, message_id: incomingMessageId }];
+            
+            const compiledText = combined
+              .filter(m => m.role === 'user')
+              .map(m => m.content)
+              .join('\n');
+              
+            const mediaUrls = combined.filter(m => m.media_url).map(m => m.media_url);
+            
+            // Triage (Gemini) - Move heavy AI work to background
+            const triage = await analyzeTip(compiledText);
+            
+            if (triage.category === "Spam / Unrelated") {
+              console.log(`[Webhook] Spam detected for alias ${alias}. Logging to spam_log.`);
+              await supabaseAdmin.from('spam_log').insert({
+                alias,
+                created_at: new Date().toISOString()
+              });
+            } else {
+              await supabaseAdmin.from('tips').insert({
+                alias: alias!,
+                encrypted_content: encryptData(JSON.stringify({ ...triage, raw_source_text: compiledText })),
+                category: triage.category,
+                priority: triage.priority,
+                media_url: mediaUrls[0] || null,
+                status: 'New'
+              });
+            }
 
-        // Physical Annihilation (Serial to ensure completion)
-        for (const mid of Array.from(allMessageIds)) {
-          await deleteTelegramMessage(chatId, mid);
-        }
+            // Final deletion loop
+            const goodbyeId = await sendTelegramMessage(chatId, "🔒 Submission finalized. Secure connection terminated.");
+            
+            const allMessageIds = new Set<number>();
+            combined.forEach(m => { if (m.message_id) allMessageIds.add(m.message_id); });
+            if (goodbyeId) allMessageIds.add(goodbyeId);
 
-        await supabaseAdmin.from('sessions').delete().eq('id', session.id);
+            // Physical Annihilation
+            for (const mid of Array.from(allMessageIds)) {
+              await deleteTelegramMessage(chatId, mid);
+            }
+
+            await supabaseAdmin.from('sessions').delete().eq('id', session.id);
+            console.log(`[Webhook] Finalized and wiped session for alias: ${alias}`);
+          } catch (finalErr) {
+            console.error('[Webhook] Background finalization failure:', finalErr);
+          }
+        });
       } else {
         // --- NORMAL INTAKE ---
         // 1. Record the user message immediately

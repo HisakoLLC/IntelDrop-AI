@@ -2,7 +2,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
-export default function Sidebar() {
+export default function Sidebar({ clientName }: { clientName?: string }) {
   const pathname = usePathname()
 
   const links = [
@@ -16,7 +16,7 @@ export default function Sidebar() {
       <div className="mb-10 pl-2">
         <h2 className="text-[22px] font-bold tracking-[-0.25px] text-notion-black flex items-center gap-2">
           <div className="w-6 h-6 bg-black rounded-sm flex items-center justify-center text-white text-xs font-bold">I</div>
-          IntelDrop
+          {clientName || 'IntelDrop'}
         </h2>
         <p className="text-[12px] font-bold text-warm-gray-300 uppercase tracking-widest mt-1">Investigative Workspace</p>
       </div>

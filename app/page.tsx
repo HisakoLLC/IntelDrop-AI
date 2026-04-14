@@ -22,17 +22,16 @@ export default function LandingPage() {
           <div className="w-8 h-8 bg-black rounded-sm flex items-center justify-center text-white font-bold text-xl">I</div>
           <span className="text-lg font-bold tracking-tight">IntelDrop AI</span>
         </div>
-        <div className="hidden md:flex gap-8 text-[15px] font-semibold text-warm-gray-500">
-          <a href="#problem" className="hover:text-black transition-colors">The Problem</a>
-          <a href="#solution" className="hover:text-black transition-colors">Our Solution</a>
-          <a href="#security" className="hover:text-black transition-colors">Security</a>
+        <div className="flex items-center gap-4">
+          <a href="/login" className="text-[14px] font-bold text-warm-gray-500 hover:text-black transition-colors hidden sm:block">Login</a>
+          <a href="/dashboard" className="text-[14px] font-bold text-notion-blue hover:underline hidden sm:block">Dashboard</a>
+          <button 
+            onClick={scrollToForm}
+            className="bg-notion-blue text-white px-4 py-2 rounded-[4px] text-[14px] font-bold hover:bg-[#005bab] transition-all transform active:scale-95 shadow-sm"
+          >
+            Request a Demo
+          </button>
         </div>
-        <button 
-          onClick={scrollToForm}
-          className="bg-notion-blue text-white px-4 py-2 rounded-[4px] text-[15px] font-semibold hover:bg-[#005bab] transition-all transform active:scale-95 shadow-sm"
-        >
-          Request a Demo
-        </button>
       </nav>
       <main className="selection:bg-notion-blue selection:text-white">
         {/* ⚡ HERO SECTION */}
@@ -42,7 +41,7 @@ export default function LandingPage() {
               <span className="inline-block bg-[#f2f9ff] text-[#097fe8] px-3 py-1 rounded-full text-[12px] font-bold tracking-[0.125px] mb-6 border border-[#a3daff]/30">
                 AFRICA&apos;S FIRST AI WHISTLEBLOWER SHIELD
               </span>
-              <h1 className="text-5xl md:text-[64px] font-bold leading-[1.05] md:leading-[1] tracking-[-2.5px] mb-8 text-notion-black">
+              <h1 className="text-[40px] md:text-[64px] font-bold !leading-[1.1] md:!leading-[1] tracking-[-1.5px] md:tracking-[-2.5px] mb-8 text-notion-black">
                 The AI-Powered Secure Tip-Line for Investigative Teams
               </h1>
               <p className="text-xl md:text-2xl font-medium text-warm-gray-500 mb-10 leading-relaxed max-w-xl">

@@ -1,4 +1,9 @@
-export default function SettingsPage() {
+import { getClientSettings } from '@/actions/settings'
+import SettingsForm from '@/components/dashboard/SettingsForm'
+
+export default async function SettingsPage() {
+  const settings = await getClientSettings()
+
   return (
     <div className="space-y-10 selection:bg-notion-blue selection:text-white">
       <header className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-whisper pb-10">
@@ -19,20 +24,10 @@ export default function SettingsPage() {
       <section className="max-w-2xl bg-white border border-whisper p-10 rounded-[12px] shadow-notion-card animate-in fade-in slide-in-from-bottom-4 duration-700">
         <h2 className="text-[20px] font-bold tracking-tight text-notion-black mb-8 border-b border-whisper pb-4">Identity & Branding</h2>
         
-        <form className="space-y-8">
-          <div className="space-y-2">
-            <label className="block text-[14px] font-semibold text-warm-gray-500 ml-0.5">Workspace Name</label>
-            <input 
-              type="text" 
-              className="w-full bg-warm-white text-warm-gray-300 border border-whisper p-3 rounded-[4px] text-[15px] font-medium cursor-not-allowed"
-              defaultValue="IntelDrop Investigative Team"
-              disabled
-            />
-            <p className="text-[12px] font-medium text-warm-gray-300 ml-0.5 mt-3 italic">
-              * Workspace name is managed via the system orchestration layer.
-            </p>
-          </div>
-        </form>
+        <SettingsForm 
+          initialName={settings?.client_name || 'IntelDrop Prototype'} 
+          initialLogoUrl={settings?.client_logo_url || null}
+        />
       </section>
     </div>
   )
