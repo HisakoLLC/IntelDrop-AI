@@ -1,4 +1,4 @@
-v @import "tailwindcss";
+@import "tailwindcss";
 
 @theme {
   --color-notion-blue: #0075de;

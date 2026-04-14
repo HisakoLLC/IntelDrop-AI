@@ -33,7 +33,8 @@ export default function LandingPage() {
         >
           Request a Demo
         </button>
-      </nav      <main className="selection:bg-notion-blue selection:text-white">
+      </nav>
+      <main className="selection:bg-notion-blue selection:text-white">
         {/* ⚡ HERO SECTION */}
         <section className="relative pt-20 pb-32 px-6 max-w-[1240px] mx-auto overflow-hidden">
           <div className="grid lg:grid-cols-2 gap-12 items-center">

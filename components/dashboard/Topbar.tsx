@@ -1,5 +1,7 @@
+"use client";
+
 import Image from 'next/image'
-import { createClient } from '@/utils/supabase/client'
+import { createClient } from '@/lib/supabase-client'
 import { useRouter } from 'next/navigation'
 
 export default function Topbar({ clientName, clientLogoUrl }: { clientName?: string, clientLogoUrl?: string }) {
