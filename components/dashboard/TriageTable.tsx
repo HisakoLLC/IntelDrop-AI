@@ -110,6 +110,23 @@ export default function TriageTable({ initialTips }: { initialTips: Tip[] }) {
         </table>
       </div>
 
+      {selectedTip && (
+        <TipDetailModal 
+          tip={selectedTip} 
+          onClose={() => setSelectedTip(null)}
+          onReply={(alias) => {
+            setSelectedTip(null);
+            setActiveReplyAlias(alias);
+          }}
+        />
+      )}
+
+      {activeReplyAlias && (
+        <ReplyModal 
+          alias={activeReplyAlias} 
+          onClose={() => setActiveReplyAlias(null)} 
+        />
+      )}
     </>
   )
 }

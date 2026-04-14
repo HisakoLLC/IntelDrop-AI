@@ -40,7 +40,7 @@ export default function LandingPage() {
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             <div className="z-10">
               <span className="inline-block bg-[#f2f9ff] text-[#097fe8] px-3 py-1 rounded-full text-[12px] font-bold tracking-[0.125px] mb-6 border border-[#a3daff]/30">
-                AFRICA'S FIRST AI WHISTLEBLOWER SHIELD
+                AFRICA&apos;S FIRST AI WHISTLEBLOWER SHIELD
               </span>
               <h1 className="text-5xl md:text-[64px] font-bold leading-[1.05] md:leading-[1] tracking-[-2.5px] mb-8 text-notion-black">
                 The AI-Powered Secure Tip-Line for Investigative Teams
