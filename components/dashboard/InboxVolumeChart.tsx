@@ -27,7 +27,7 @@ export default function InboxVolumeChart({ data }: { data: VolumeData[] }) {
             allowDecimals={false}
           />
           <Tooltip 
-            cursor={{ fill: 'rgba(0,0,0,0.03)', radius: [4, 4, 0, 0] }}
+            cursor={{ fill: 'rgba(0,0,0,0.03)' }}
             contentStyle={{ 
               backgroundColor: '#ffffff', 
               color: '#050505', 
