@@ -111,6 +111,7 @@ async function deleteTelegramMessage(chatId: string, messageId: number) {
 
 export async function POST(req: Request) {
   let body: TelegramUpdate | null = null;
+  let alias: string | null = null;
   try {
     // --- WEBHOOK SIGNATURE VERIFICATION ---
     const secretToken = req.headers.get('X-Telegram-Bot-Api-Secret-Token');
@@ -150,7 +151,6 @@ export async function POST(req: Request) {
     
     // ALIAS & SESSION PREP
     const hashedId = hashData(chatId);
-    let alias = null;
     
     const { data: existingMap } = await supabaseAdmin
       .from('alias_map')
