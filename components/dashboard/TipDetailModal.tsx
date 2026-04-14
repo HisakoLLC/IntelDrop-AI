@@ -22,6 +22,9 @@ export default function TipDetailModal({ tip, onClose, onReply }: TipDetailModal
     }
   }, [tip])
 
+  const [isRevoking, setIsRevoking] = useState(false)
+  const [showRevokeConfirm, setShowRevokeConfirm] = useState(false)
+
   if (!tip) return null
 
   const handleSave = async () => {
@@ -36,9 +39,6 @@ export default function TipDetailModal({ tip, onClose, onReply }: TipDetailModal
       setIsSaving(false)
     }
   }
-
-  const [isRevoking, setIsRevoking] = useState(false)
-  const [showRevokeConfirm, setShowRevokeConfirm] = useState(false)
 
   const handleRevoke = async () => {
     if (!showRevokeConfirm) {

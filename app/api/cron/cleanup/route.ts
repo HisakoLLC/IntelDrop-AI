@@ -125,7 +125,7 @@ export async function GET(req: Request) {
     // --- NEW: 30-DAY ALIAS PURGE ---
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
     try {
-      const { data: purgeData, error: purgeErr } = await supabaseAdmin
+      const { error: purgeErr } = await supabaseAdmin
         .from('alias_map')
         .delete()
         .lt('last_contact_at', thirtyDaysAgo);
