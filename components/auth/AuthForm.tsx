@@ -32,35 +32,42 @@ export default function AuthForm() {
   }
 
   return (
-    <form onSubmit={handleLogin} className="space-y-6 w-full max-w-sm mx-auto">
-      <div className="space-y-2">
-        <label className="block text-sm font-black uppercase tracking-wider">Operator Key</label>
+    <form onSubmit={handleLogin} className="space-y-5">
+      <div className="space-y-1.5">
+        <label className="block text-[14px] font-semibold text-warm-gray-500 ml-0.5">Email Address</label>
         <input 
           type="email" 
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="w-full bg-black text-white border-[3px] border-white p-3 font-mono focus:outline-none focus:ring-2 focus:ring-white placeholder-white/50"
-          placeholder="AGENT_ID"
+          className="w-full bg-white text-notion-black border border-whisper px-3 py-2 rounded-[4px] text-[15px] focus:outline-none focus:ring-2 focus:ring-notion-blue/20 focus:border-notion-blue transition-all placeholder-warm-gray-300 shadow-sm"
+          placeholder="Enter your email"
           required
         />
       </div>
-      <div className="space-y-2">
-        <label className="block text-sm font-black uppercase tracking-wider">Clearance Code</label>
+      <div className="space-y-1.5">
+        <label className="block text-[14px] font-semibold text-warm-gray-500 ml-0.5">Password</label>
         <input 
           type="password" 
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          className="w-full bg-black text-white border-[3px] border-white p-3 font-mono focus:outline-none focus:ring-2 focus:ring-white"
+          className="w-full bg-white text-notion-black border border-whisper px-3 py-2 rounded-[4px] text-[15px] focus:outline-none focus:ring-2 focus:ring-notion-blue/20 focus:border-notion-blue transition-all shadow-sm"
+          placeholder="••••••••"
           required 
         />
       </div>
-      {error && <p className="text-white bg-black border-[3px] border-white p-2 text-sm font-bold uppercase">{error}</p>}
+      
+      {error && (
+        <div className="p-3 rounded-[4px] bg-red-50 border border-red-100 text-sm font-semibold text-red-600">
+          {error}
+        </div>
+      )}
+
       <button 
         type="submit" 
         disabled={loading}
-        className="w-full bg-white text-black border-[3px] border-white py-3 font-black uppercase hover:bg-black hover:text-white transition-colors tracking-widest disabled:opacity-50"
+        className="w-full bg-notion-blue text-white py-2.5 rounded-[4px] text-[15px] font-bold hover:bg-[#005bab] transition-all transform active:scale-[0.98] shadow-md shadow-notion-blue/10 disabled:opacity-50 mt-2"
       >
-        {loading ? 'Authenticating...' : 'Access Terminal'}
+        {loading ? 'Verifying...' : 'Sign in to Workspace'}
       </button>
     </form>
   )

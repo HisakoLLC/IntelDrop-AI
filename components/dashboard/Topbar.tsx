@@ -1,34 +1,37 @@
 import Image from 'next/image'
-import SignOutButton from '@/components/auth/SignOutButton'
+import { createClient } from '@/utils/supabase/client'
+import { useRouter } from 'next/navigation'
 
-type TopbarProps = {
-  clientName?: string | null
-  clientLogoUrl?: string | null
-}
+export default function Topbar({ clientName, clientLogoUrl }: { clientName?: string, clientLogoUrl?: string }) {
+  const supabase = createClient()
+  const router = useRouter()
 
-export default function Topbar({ clientName = 'UNREGISTERED ENTITY', clientLogoUrl }: TopbarProps) {
+  const handleSignOut = async () => {
+    await supabase.auth.signOut()
+    router.push('/login')
+    router.refresh()
+  }
+
   return (
-    <header className="h-20 w-full border-b-[3px] border-white bg-black text-white flex items-center justify-between px-8 font-mono shrink-0">
-      <div className="flex items-center space-x-6">
-        <span className="bg-white text-black px-4 py-2 font-black tracking-widest text-sm shadow-[2px_2px_0px_0px_rgba(255,255,255,0.3)]">
-          ON-DUTY
-        </span>
-        
-        {clientLogoUrl ? (
-          <Image 
-            src={clientLogoUrl} 
-            alt={clientName || 'Client Entity Logo'} 
-            width={250}
-            height={40}
-            className="h-10 w-auto object-contain"
-            unoptimized
-          />
-        ) : (
-          <h1 className="text-xl font-bold tracking-widest uppercase">{clientName}</h1>
+    <header className="h-16 border-b border-whisper bg-white px-8 flex justify-between items-center shrink-0">
+      <div className="flex items-center gap-4">
+        {clientLogoUrl && (
+          <div className="relative w-8 h-8 rounded-[4px] overflow-hidden border border-whisper">
+            <Image src={clientLogoUrl} alt="Logo" fill className="object-cover" />
+          </div>
         )}
+        <h1 className="text-lg font-bold tracking-tight text-notion-black uppercase">
+          {clientName || 'IntelDrop Dashboard'}
+        </h1>
       </div>
-      <div>
-        <SignOutButton />
+
+      <div className="flex items-center gap-6">
+        <button 
+          onClick={handleSignOut}
+          className="text-[14px] font-semibold text-warm-gray-500 hover:text-black transition-colors"
+        >
+          Sign out
+        </button>
       </div>
     </header>
   )

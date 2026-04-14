@@ -5,6 +5,8 @@ const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY,
 });
 
+import * as Sentry from "@sentry/nextjs";
+
 // 2026 Stable Model Hierarchy
 const PRIMARY_MODEL = 'gemini-2.0-flash-001';
 const FALLBACK_1 = 'gemini-2.5-flash';
@@ -26,40 +28,51 @@ async function callResilientAI(options: Record<string, any>, attempt = 1): Promi
   if (attempt === 2) modelToUse = FALLBACK_1;
   if (attempt >= 3) modelToUse = FALLBACK_2;
   
-  try {
-    console.log(`[AI] Attempt ${attempt}/6 using ${modelToUse}...`);
-    return await ai.models.generateContent({
-      ...options,
-      model: modelToUse
-    } as any);
-  } catch (err: unknown) {
-    const errorMessage = err instanceof Error ? err.message : String(err);
-    const isRetryable = errorMessage.includes('503') || 
-                        errorMessage.includes('429') || 
-                        errorMessage.includes('UNAVAILABLE');
-    
-    // Max 6 retries (~60s of persistence)
-    if (isRetryable && attempt < 6) {
-      const delay = Math.pow(2, attempt) * 1000;
-      console.warn(`[AI] ${modelToUse} busy or throttled. Retrying in ${delay}ms...`);
-      await new Promise(resolve => setTimeout(resolve, delay));
-      return callResilientAI(options, attempt + 1);
+  return await Sentry.startSpan({ 
+    name: "callResilientAI", 
+    op: "ai.generate",
+    attributes: { model: modelToUse, attempt } 
+  }, async () => {
+    try {
+      console.log(`[AI] Attempt ${attempt}/6 using ${modelToUse}...`);
+      return await ai.models.generateContent({
+        ...options,
+        model: modelToUse
+      } as any);
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      const isRetryable = errorMessage.includes('503') || 
+                          errorMessage.includes('429') || 
+                          errorMessage.includes('UNAVAILABLE');
+      
+      // Capture non-retryable errors or final death immediately
+      if (!isRetryable || attempt === 6) {
+        Sentry.captureException(err, { extra: { model: modelToUse, attempt } });
+      }
+
+      // Max 6 retries (~60s of persistence)
+      if (isRetryable && attempt < 6) {
+        const delay = Math.pow(2, attempt) * 1000;
+        console.warn(`[AI] ${modelToUse} busy or throttled. Retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        return callResilientAI(options, attempt + 1);
+      }
+      throw err;
     }
-    throw err;
-  }
+  });
 }
 
 const SYSTEM_PROMPT = `You are the lead intelligence intake officer for IntelDrop. 
 Your goal is to perform "Multimodal Triage" on whistleblower reports.
 Return ONLY valid JSON in this format:
 {
-  "category": "Corruption" | "Crime" | "Corporate" | "Other",
+  "category": "Corruption" | "Crime" | "Corporate" | "Spam / Unrelated" | "Other",
   "priority": "High" | "Medium" | "Low" | "Spam",
   "summary": "one sentence summary",
   "risk_assessment": "short risk note",
   "original_language": "Detected language (e.g. English, Swahili, Russian)"
 }
-If the submission is a greeting, casual conversation, random text, or irrelevant to intelligence (e.g. asking about weekend plans), set priority to "Spam" and category to "Other".`;
+If the submission is a greeting, casual conversation, random text, or irrelevant to intelligence, set category to "Spam / Unrelated" and priority to "Spam".`;
 
 const CONVERSATION_PROMPT = `You are "Naisha", the IntelDrop intake officer. 
 You are speaking with a whistleblower. They are anonymous and likely stressed.

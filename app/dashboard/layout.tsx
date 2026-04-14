@@ -27,11 +27,11 @@ export default async function DashboardLayout({
     .single()
 
   return (
-    <div className="flex h-[100dvh] bg-black overflow-hidden font-mono text-white">
+    <div className="flex h-screen bg-white overflow-hidden text-notion-black selection:bg-notion-blue selection:text-white">
       <Sidebar />
       <div className="flex-1 flex flex-col h-screen overflow-hidden">
         <Topbar clientName={settings?.client_name} clientLogoUrl={settings?.client_logo_url} />
-        <main className="flex-1 overflow-y-auto p-8 bg-black">
+        <main className="flex-1 overflow-y-auto p-8 bg-warm-white">
           <div className="max-w-7xl mx-auto min-h-full">
             {children}
           </div>

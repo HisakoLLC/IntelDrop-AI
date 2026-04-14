@@ -10,7 +10,8 @@ const requiredEnvs = [
   'SUPABASE_SERVICE_ROLE_KEY',
   'AES_ENCRYPTION_KEY',
   'GEMINI_API_KEY',
-  'TELEGRAM_BOT_TOKEN'
+  'TELEGRAM_BOT_TOKEN',
+  'TELEGRAM_WEBHOOK_SECRET'
 ];
 
 for (const envVar of requiredEnvs) {
@@ -19,8 +20,41 @@ for (const envVar of requiredEnvs) {
   }
 }
 
+import { withSentryConfig } from "@sentry/nextjs";
+
 const nextConfig: NextConfig = {
   /* config options here */
 };
 
-export default nextConfig;
+export default withSentryConfig(nextConfig, {
+  // For all available options, see:
+  // https://github.com/getsentry/sentry-webpack-plugin#options
+
+  // Suppresses source map uploading logs during bundling
+  silent: true,
+  org: "intel-drop",
+  project: "inteldrop-ai",
+}, {
+  // For all available options, see:
+  // https://docs.sentry.io/platforms/javascript/guides/nextjs/manual-setup/
+
+  // Upload a larger set of source maps for prettier stack traces (increases build time)
+  widenClientFileUpload: true,
+
+  // Transpiles SDK to be compatible with IE11 (increases bundle size)
+  transpileClientSDK: true,
+
+  // Routes HTTP requests through Sentry's tunnel (prevents ad blockers from blocking events)
+  tunnelRoute: "/monitoring",
+
+  // Hides source maps from visitors
+  hideSourceMaps: true,
+
+  // Automatically tree-shake Sentry logger statements to reduce bundle size
+  disableLogger: true,
+
+  // Enables automatic instrumentation of Vercel Cron Monitors.
+  // See the following for more information:
+  // https://docs.sentry.io/product/crons/
+  automaticVercelMonitors: true,
+});

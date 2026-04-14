@@ -14,103 +14,95 @@ export default function TriageTable({ initialTips }: { initialTips: Tip[] }) {
     setMounted(true)
   }, [])
 
-  const getPriorityClass = (priority: string | null) => {
-    switch (priority?.toLowerCase()) {
-      case 'high': 
-        return 'font-black text-white'
-      case 'medium': 
-        return 'font-bold opacity-80 text-white/90'
-      case 'low': 
-        return 'font-light opacity-60'
-      default: 
-        return 'font-normal'
+  const getPriorityBadge = (priority: string | null) => {
+    const p = priority?.toLowerCase()
+    switch (p) {
+      case 'high': return 'bg-red-50 text-red-600 border-red-100'
+      case 'medium': return 'bg-orange-50 text-orange-600 border-orange-100'
+      case 'low': return 'bg-emerald-50 text-emerald-600 border-emerald-100'
+      default: return 'bg-warm-white text-warm-gray-500 border-whisper'
     }
   }
 
-  const getStatusClass = (status: string) => {
+  const getStatusBadge = (status: string) => {
     switch (status) {
-      case 'New': return 'bg-white text-black font-black'
-      case 'Under Review': return 'border border-white text-white font-bold'
-      case 'Closed': return 'opacity-30 line-through'
-      default: return ''
+      case 'New': return 'bg-blue-50 text-notion-blue border-blue-100'
+      case 'Under Review': return 'bg-purple-50 text-purple-600 border-purple-100'
+      case 'Closed': return 'bg-warm-white text-warm-gray-300 border-whisper grayscale opacity-60'
+      default: return 'bg-warm-white text-warm-gray-500 border-whisper'
     }
   }
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString()
+    return new Date(dateString).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
   }
 
   if (tips.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-24 border-[3px] border-dashed border-white/50">
-        <div className="text-4xl mb-4 font-black tracking-tighter opacity-50">NO DATA</div>
-        <p className="text-sm uppercase tracking-widest font-bold opacity-50">The intelligence queue is currently empty.</p>
+      <div className="flex flex-col items-center justify-center py-24 bg-white border border-whisper rounded-[12px] shadow-notion-card">
+        <div className="text-4xl mb-4 font-bold tracking-tighter opacity-10">NO DATA</div>
+        <p className="text-[15px] font-medium text-warm-gray-300">The intelligence queue is currently empty.</p>
       </div>
     )
   }
 
-  // To prevent hydration mismatch, we render a shell or null until mounted
-  // However, for SEO/initial load, we can render the table structure but skip interactivity
-  // For simplicity and to fix the crash, we'll use the mounted check.
   if (!mounted) {
     return (
-      <div className="animate-pulse border-[3px] border-white p-12 text-center uppercase font-black tracking-widest">
-        Synchronizing Secure Interface...
+      <div className="animate-pulse bg-white border border-whisper rounded-[12px] p-24 text-center font-semibold text-warm-gray-300">
+        Loading intelligence feed...
       </div>
     )
   }
 
   return (
     <>
-      <div className="overflow-x-auto border-[3px] border-white shadow-[4px_4px_0px_0px_rgba(255,255,255,1)]">
-        <table className="w-full text-left font-mono text-sm border-collapse bg-black">
+      <div className="bg-white border border-whisper rounded-[12px] shadow-notion-card overflow-hidden">
+        <table className="w-full text-left text-[14px] border-collapse">
           <thead>
-            <tr className="border-b-[3px] border-white bg-white text-black uppercase tracking-[0.2em] font-black text-[10px]">
-              <th className="p-4 border-r-[3px] border-black">Status</th>
-              <th className="p-4 border-r-[3px] border-black">Alias</th>
-              <th className="p-4 border-r-[3px] border-black">Priority</th>
-              <th className="p-4 border-r-[3px] border-black">Category</th>
-              <th className="p-4 border-r-[3px] border-black max-w-[400px]">Intelligence Summary</th>
-              <th className="p-4 border-r-[3px] border-black">Timestamp</th>
-              <th className="p-4 bg-white text-black">Action</th>
+            <tr className="bg-warm-white border-b border-whisper text-warm-gray-500 font-semibold">
+              <th className="p-4 w-[120px]">Status</th>
+              <th className="p-4 w-[140px]">Alias</th>
+              <th className="p-4 w-[110px]">Priority</th>
+              <th className="p-4 w-[160px]">Category</th>
+              <th className="p-4">Summary</th>
+              <th className="p-4 w-[160px] text-right">Timestamp</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="divide-y divide-whisper">
             {tips.map((tip) => (
               <tr 
                 key={tip.id} 
                 onClick={() => setSelectedTip(tip)}
-                className="border-b border-white/30 hover:bg-white/10 transition-colors cursor-pointer group"
+                className="hover:bg-warm-white/50 transition-colors cursor-pointer group"
               >
-                <td className="p-4 border-r border-white/30">
-                  <span className={`px-2 py-0.5 text-[9px] uppercase tracking-widest ${getStatusClass(tip.status)}`}>
+                <td className="p-4">
+                  <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold border ${getStatusBadge(tip.status)}`}>
                     {tip.status}
                   </span>
                 </td>
-                <td className="p-4 border-r border-white/30 font-bold whitespace-nowrap group-hover:underline">
+                <td className="p-4 font-bold text-notion-black group-hover:text-notion-blue transition-colors">
                   {tip.alias}
                 </td>
-                <td className={`p-4 border-r border-white/30 uppercase tracking-wider ${getPriorityClass(tip.priority)}`}>
-                  {tip.priority || 'UNRATED'}
+                <td className="p-4">
+                  <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold border uppercase tracking-[0.05em] ${getPriorityBadge(tip.priority)}`}>
+                    {tip.priority || 'UNRATED'}
+                  </span>
                 </td>
-                <td className="p-4 border-r border-white/30 uppercase opacity-90 text-[11px] leading-tight">
-                  {tip.category || 'UNCLASSIFIED'}
+                <td className="p-4 font-medium text-warm-gray-500 text-[13px]">
+                  {tip.category || 'Unclassified'}
                 </td>
-                <td className="p-4 border-r border-white/30 max-w-[400px] leading-relaxed">
-                  <div className="line-clamp-2 text-xs opacity-80" title={tip.decrypted_summary}>
+                <td className="p-4">
+                  <div className="line-clamp-1 font-medium text-notion-black opacity-80" title={tip.decrypted_summary}>
                     {tip.decrypted_summary}
                   </div>
                 </td>
-                <td className="p-4 border-r border-white/30 whitespace-nowrap opacity-70 text-xs text-right">
+                <td className="p-4 text-right font-medium text-warm-gray-300 text-[13px] whitespace-nowrap">
                   {formatDate(tip.created_at)}
-                </td>
-                <td className="p-4 whitespace-nowrap text-center" onClick={(e) => e.stopPropagation()}>
-                  <button 
-                    onClick={() => setActiveReplyAlias(tip.alias)}
-                    className="border-[2px] border-white px-3 py-1 font-bold uppercase tracking-widest hover:bg-white hover:text-black transition-colors text-xs"
-                  >
-                    Reply
-                  </button>
                 </td>
               </tr>
             ))}
@@ -118,16 +110,6 @@ export default function TriageTable({ initialTips }: { initialTips: Tip[] }) {
         </table>
       </div>
 
-      <ReplyModal 
-        isOpen={!!activeReplyAlias} 
-        alias={activeReplyAlias} 
-        onClose={() => setActiveReplyAlias(null)} 
-      />
-
-      <TipDetailModal 
-        tip={selectedTip}
-        onClose={() => setSelectedTip(null)}
-      />
     </>
   )
 }

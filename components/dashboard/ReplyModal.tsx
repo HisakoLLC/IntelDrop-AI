@@ -53,36 +53,53 @@ export default function ReplyModal({ alias, isOpen, onClose }: ReplyModalProps) 
   }
 
   const modalContent = (
-    <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/90 font-mono">
-      <div className="bg-black border-[4px] border-white w-full max-w-lg p-8 relative shadow-[12px_12px_0px_0px_rgba(255,255,255,1)]">
-        <h2 className="text-3xl font-black uppercase mb-4 underline decoration-white decoration-4 underline-offset-8">Reply to Source</h2>
-        <p className="text-xs font-bold uppercase tracking-[0.2em] opacity-60 mb-8">TARGET ROUTING ALIAS: <span className="text-white opacity-100">{alias}</span></p>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/10 animate-in fade-in duration-300">
+      <div 
+        className="absolute inset-0" 
+        onClick={onClose}
+      />
+      <div className="relative bg-white border border-whisper w-full max-w-lg p-10 rounded-[16px] shadow-notion-deep animate-in zoom-in-95 duration-200">
+        <h2 className="text-[28px] font-bold tracking-[-1px] text-notion-black mb-1">Reply to Source</h2>
+        <p className="text-[13px] font-semibold text-warm-gray-300 uppercase tracking-widest mb-8 flex items-center gap-2">
+          Source Alias: <span className="text-notion-black font-bold">{alias}</span>
+        </p>
         
-        <textarea
-          autoFocus
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          placeholder="ENTER SECURE MESSAGE FOR SOURCE..."
-          className="w-full bg-black text-white border-[3px] border-white p-5 h-40 focus:outline-none focus:ring-4 focus:ring-white/20 transition-all mb-8 placeholder-white/30"
-          disabled={status === 'sending' || status === 'success'}
-        />
+        <div className="space-y-4 mb-8">
+          <textarea
+            autoFocus
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            placeholder="Type your message to the secure source..."
+            className="w-full bg-white text-notion-black border border-whisper p-5 h-48 rounded-[8px] text-[15px] font-medium focus:outline-none focus:ring-2 focus:ring-notion-blue/20 transition-all placeholder-warm-gray-300 shadow-sm"
+            disabled={status === 'sending' || status === 'success'}
+          />
+          
+          {status === 'error' && (
+            <div className="p-3 rounded-[4px] bg-red-50 border border-red-100 text-sm font-semibold text-red-600 flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse" />
+              Error: {errorText}
+            </div>
+          )}
+          {status === 'success' && (
+            <div className="p-4 rounded-[4px] bg-emerald-50 border border-emerald-100 text-sm font-bold text-emerald-600 text-center tracking-tight">
+              Message submitted successfully
+            </div>
+          )}
+        </div>
         
-        {status === 'error' && <p className="mb-6 text-white font-bold p-3 border-2 border-white animate-pulse">ERROR: {errorText}</p>}
-        {status === 'success' && <p className="mb-6 text-white font-black uppercase text-center border-4 border-white p-4 tracking-widest bg-white/10">MESSAGE TRANSMITTED SECURELY</p>}
-        
-        <div className="flex justify-end gap-8">
+        <div className="flex justify-end items-center gap-6">
           <button 
             onClick={onClose} 
-            className="text-sm font-black uppercase tracking-[0.3em] hover:underline px-2"
+            className="text-[15px] font-semibold text-warm-gray-500 hover:text-notion-black transition-colors"
           >
-            Discard
+            Cancel
           </button>
           <button 
             onClick={handleSend}
-            disabled={status !== 'idle'}
-            className="bg-white text-black px-10 py-4 font-black uppercase tracking-[0.2em] hover:bg-black hover:text-white border-[4px] border-white transition-all disabled:opacity-30 shadow-[6px_6px_0px_0px_rgba(255,255,255,0.5)]"
+            disabled={status !== 'idle' || !message.trim()}
+            className="bg-notion-blue text-white px-8 py-2.5 rounded-[4px] text-[15px] font-bold hover:bg-[#005bab] transition-all transform active:scale-[0.98] shadow-md shadow-notion-blue/10 disabled:opacity-30"
           >
-            {status === 'sending' ? 'Transmitting...' : 'Execute Dispatch'}
+            {status === 'sending' ? 'Transmitting...' : 'Submit Reply'}
           </button>
         </div>
       </div>

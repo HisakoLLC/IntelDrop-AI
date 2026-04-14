@@ -1,36 +1,33 @@
-@import "tailwindcss";
+v @import "tailwindcss";
 
 @theme {
-  --color-black: #000000;
-  --color-white: #ffffff;
-  
-  /* Resetting common color variables to enforce monochrome */
-  --color-gray-*: initial;
-  --color-blue-*: initial;
-  --color-red-*: initial;
-  --color-green-*: initial;
-  --color-yellow-*: initial;
-  --color-orange-*: initial;
-  --color-purple-*: initial;
-  --color-pink-*: initial;
-  
+  --color-notion-blue: #0075de;
+  --color-notion-black: rgba(0, 0, 0, 0.95);
+  --color-warm-white: #f6f5f4;
+  --color-warm-dark: #31302e;
+  --color-warm-gray-500: #615d59;
+  --color-warm-gray-300: #a39e98;
+
+  --shadow-notion-card: rgba(0, 0, 0, 0.04) 0px 4px 18px, rgba(0, 0, 0, 0.027) 0px 2.025px 7.84688px, rgba(0, 0, 0, 0.02) 0px 0.8px 2.925px, rgba(0, 0, 0, 0.01) 0px 0.175px 1.04062px;
+  --shadow-notion-deep: rgba(0, 0, 0, 0.01) 0px 1px 3px, rgba(0, 0, 0, 0.02) 0px 3px 7px, rgba(0, 0, 0, 0.02) 0px 7px 15px, rgba(0, 0, 0, 0.04) 0px 14px 28px, rgba(0, 0, 0, 0.05) 0px 23px 52px;
 }
 
 @layer base {
   :root {
     --background: #ffffff;
-    --foreground: #000000;
+    --foreground: rgba(0, 0, 0, 0.95);
   }
 
   body {
     background: var(--background);
     color: var(--foreground);
+    font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
     @apply antialiased;
   }
 }
 
 @layer utilities {
-  .border-high-contrast {
-    border: 3px solid #000000;
+  .border-whisper {
+    border: 1px solid rgba(0, 0, 0, 0.1);
   }
 }

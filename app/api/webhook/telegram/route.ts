@@ -112,6 +112,13 @@ async function deleteTelegramMessage(chatId: string, messageId: number) {
 export async function POST(req: Request) {
   let body: TelegramUpdate | null = null;
   try {
+    // --- WEBHOOK SIGNATURE VERIFICATION ---
+    const secretToken = req.headers.get('X-Telegram-Bot-Api-Secret-Token');
+    if (secretToken !== process.env.TELEGRAM_WEBHOOK_SECRET) {
+      console.warn('Unauthorized webhook attempt blocked from:', req.headers.get('x-forwarded-for'));
+      return new Response('Forbidden', { status: 403 });
+    }
+
     body = await req.json();
     if (!body || !body.message) {
       return NextResponse.json({ status: 'ignored' }, { status: 200 }); 
@@ -276,13 +283,23 @@ export async function POST(req: Request) {
         
         // Triage (Gemini)
         const triage = await analyzeTip(compiledText);
-        await supabaseAdmin.from('tips').insert({
-          alias: alias,
-          encrypted_content: encryptData(JSON.stringify({ ...triage, raw_source_text: compiledText })),
-          category: triage.category,
-          priority: triage.priority,
-          media_url: mediaUrls[0] || null
-        });
+        
+        if (triage.category === "Spam / Unrelated") {
+          console.log(`[Webhook] Spam detected for alias ${alias}. Logging to spam_log.`);
+          await supabaseAdmin.from('spam_log').insert({
+            alias,
+            created_at: new Date().toISOString()
+          });
+        } else {
+          await supabaseAdmin.from('tips').insert({
+            alias: alias,
+            encrypted_content: encryptData(JSON.stringify({ ...triage, raw_source_text: compiledText })),
+            category: triage.category,
+            priority: triage.priority,
+            media_url: mediaUrls[0] || null,
+            status: 'New'
+          });
+        }
 
         // Final deletion loop
         const goodbyeId = await sendTelegramMessage(chatId, "✅ Your report has been securely recorded. This chat is now being wiped.");
@@ -322,6 +339,14 @@ export async function POST(req: Request) {
   } catch (error: any) {
     console.error('Webhook Error:', error.message);
     const chatId = body?.message?.chat?.id?.toString();
+    
+    import('@sentry/nextjs').then(Sentry => {
+      Sentry.captureException(error, {
+        tags: { alias },
+        extra: { chatId, body: JSON.stringify(body).substring(0, 1000) }
+      });
+    });
+
     if (chatId) {
       await sendTelegramMessage(chatId, `❌ SYSTEM ERROR: ${error.message}\n\nPlease try again later.`);
     }
