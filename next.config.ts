@@ -37,9 +37,6 @@ export default withSentryConfig(nextConfig, {
 
   // SDK options below
   widenClientFileUpload: true,
-  transpileClientSDK: true,
   tunnelRoute: "/monitoring",
   hideSourceMaps: true,
-  disableLogger: true,
-  automaticVercelMonitors: true,
 });
