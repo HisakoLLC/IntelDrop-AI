@@ -16,7 +16,7 @@ IntelDrop AI was developed to empower investigative journalists and civil societ
 ### Step 1: Secure Submission (The Source)
 A whistleblower contacts the IntelDrop Telegram Bot. 
 - **Privacy First:** No personal data is stored. 
-- **Silent Interaction:** The bot remains perfectly silent until the user types `done`, minimizing the visibility of the chat interaction on a source's device.
+- **"Naisha" Conversational AI:** An empathetic, AI-driven officer handles the intake, asking smart follow-up questions contextually to ensure high-quality intelligence before the source triggers `done`.
 - **Multimodal Intake:** Sources can send text documents, images, and voice notes.
 
 ### Step 2: Ingest & Incineration (The Gateway)
@@ -41,7 +41,7 @@ Every finalized tip is processed by the **Google Gemini AI Engine**:
 ## 3. Core Features & Guarantees
 
 ### 🛡️ Security Pillars
-- **Zero-Identity Architecture:** Telegram IDs are mapped to ephemeral aliases and then discarded. There is no permanent database record linking a source's identity to their tip.
+- **Zero-Identity Architecture:** Telegram IDs are mapped to ephemeral aliases. To support analyst communication, this mapping is retained for a **30-Day Secure Window** and then permanently purged. 
 - **Data-at-Rest Protection:** Everything is encrypted. A database breach without the `AES_ENCRYPTION_KEY` yields only gibberish.
 - **Webhook Hardening:** The API gateway validates every incoming message using a unique `X-Telegram-Bot-Api-Secret-Token`.
 
@@ -94,7 +94,8 @@ A nightly Vercel Cron job (`/api/cron/cleanup`) runs at **00:00 UTC** to:
 1. Identify sessions with no activity for 24+ hours.
 2. Triage any pending content as "Incomplete Submissions."
 3. Physically wipe the Telegram message history for that source.
-4. Delete the session and alias mapping.
+4. Delete active sessions.
+5. **Purge Alias Mappings:** Permanently delete any `alias_map` entries where the last contact was more than 30 days ago. 
 
 ### 🚀 Scaling for New Clients
 The system is built for rapid deployment. A new client instance can be stood up in ~15 minutes using the **`ONBOARDING.md`** checklist provided in the root directory.
@@ -108,6 +109,16 @@ The system is built for rapid deployment. A new client instance can be stood up 
 4.  **Phase 4:** Overhauled Auth and analyst Login portal.
 5.  **Phase 5:** Rebuilt the Analyst Inbox and Insights dashboard.
 6.  **Phase 6:** Redesigned AI Triage modals and Secure Reply interface.
+
+---
+
+## 8. Enterprise Roadmap (V1.1 Critical Priorities)
+
+To achieve full "Amnesty-Ready" status, the following items are prioritized for the next development cycle:
+1. **[CRITICAL] Two-Factor Authentication (2FA):** Mandatory TOTP support for all analyst accounts.
+2. **[CRITICAL] Analyst Roles (RBAC):** Implementation of "Admin" vs "Read-Only Viewer" roles for large newsrooms.
+3. **[HIGH] Multi-Client Partitioning:** True row-level security (RLS) based on `client_id` for independent NGO nodes.
+4. **[MEDIUM] Media Expiry:** Configurable auto-deletion of evidence blobs post-verification.
 
 ---
 

@@ -122,6 +122,20 @@ export async function GET(req: Request) {
       results.push(alias);
     }
 
+    // --- NEW: 30-DAY ALIAS PURGE ---
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    try {
+      const { data: purgeData, error: purgeErr } = await supabaseAdmin
+        .from('alias_map')
+        .delete()
+        .lt('last_contact_at', thirtyDaysAgo);
+      
+      if (purgeErr) throw purgeErr;
+      console.log(`[Cleanup] Purged expired alias mappings.`);
+    } catch (purgeErr) {
+       console.warn('[Cleanup] Alias purge skipped or failed (Column might be missing):', purgeErr);
+    }
+
     return NextResponse.json({ 
       processed: results.length, 
       aliases: results,

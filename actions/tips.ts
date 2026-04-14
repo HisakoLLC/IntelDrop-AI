@@ -104,3 +104,23 @@ export async function updateTipMetadata(id: string, status: string, notes: strin
   revalidatePath('/dashboard')
   return { success: true }
 }
+
+export async function revokeSourceAccess(alias: string) {
+  const supabase = await createClient()
+  
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Unauthorized Operation')
+
+  const { error } = await supabase
+    .from('alias_map')
+    .delete()
+    .eq('alias', alias)
+
+  if (error) {
+    console.error('Failed to revoke access:', error)
+    throw new Error('Revoke Failure')
+  }
+
+  revalidatePath('/dashboard')
+  return { success: true }
+}

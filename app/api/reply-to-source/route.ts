@@ -66,6 +66,16 @@ export async function POST(req: Request) {
        return NextResponse.json({ error: 'Upstream Message Delivery Blocked' }, { status: 502 });
     }
 
+    // 5.5 RESET THE CLOCK: Update last_contact_at for 30-day window
+    try {
+      await supabaseAdmin
+        .from('alias_map')
+        .update({ last_contact_at: new Date().toISOString() })
+        .eq('alias', alias);
+    } catch (dbErr) {
+      console.warn('Retention clock update skipped (Column might be missing):', dbErr);
+    }
+
     const newMessageId = telData.result.message_id;
 
     // 6. LOG TO REPLIES TABLE (NEW REQUIREMENT)

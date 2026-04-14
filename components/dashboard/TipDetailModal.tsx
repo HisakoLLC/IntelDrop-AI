@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react'
 import Image from 'next/image'
 import type { Tip } from '@/actions/tips'
-import { updateTipMetadata } from '@/actions/tips'
+import { updateTipMetadata, revokeSourceAccess } from '@/actions/tips'
 
 interface TipDetailModalProps {
   tip: Tip | null
@@ -34,6 +34,27 @@ export default function TipDetailModal({ tip, onClose, onReply }: TipDetailModal
       alert('System Error: Could not save investigative updates.')
     } finally {
       setIsSaving(false)
+    }
+  }
+
+  const [isRevoking, setIsRevoking] = useState(false)
+  const [showRevokeConfirm, setShowRevokeConfirm] = useState(false)
+
+  const handleRevoke = async () => {
+    if (!showRevokeConfirm) {
+      setShowRevokeConfirm(true)
+      return
+    }
+    
+    setIsRevoking(true)
+    try {
+      await revokeSourceAccess(tip.alias)
+      onClose()
+    } catch (err) {
+      console.error(err)
+      alert('Failed to revoke access.')
+    } finally {
+      setIsRevoking(false)
     }
   }
 
@@ -153,6 +174,25 @@ export default function TipDetailModal({ tip, onClose, onReply }: TipDetailModal
                 >
                   {isSaving ? 'Saving...' : 'Update Report'}
                 </button>
+
+                <div className="pt-4 mt-4 border-t border-whisper">
+                  <button 
+                    onClick={handleRevoke}
+                    disabled={isRevoking}
+                    className={`w-full py-2 text-[12px] font-bold transition-all rounded-[4px] ${
+                      showRevokeConfirm 
+                        ? 'bg-red-50 text-red-600 border border-red-100 hover:bg-red-100' 
+                        : 'text-warm-gray-300 hover:text-red-600 hover:bg-red-50'
+                    }`}
+                  >
+                    {isRevoking ? 'Revoking...' : showRevokeConfirm ? 'Click to Confirm Revoke' : 'Revoke Source Access'}
+                  </button>
+                  {showRevokeConfirm && (
+                    <p className="text-[10px] text-red-600/60 mt-2 text-center leading-tight">
+                      CAUTION: This permanently severs all identifying links for this alias.
+                    </p>
+                  )}
+                </div>
               </div>
             </aside>
           </div>

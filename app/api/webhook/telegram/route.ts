@@ -3,8 +3,9 @@ import { NextResponse } from 'next/server';
 import { encryptData, hashData } from '@/lib/encryption';
 import { generateAlias } from '@/lib/alias';
 import { supabaseAdmin } from '@/lib/supabase';
-import { analyzeTip, transcribeAudio, analyzeImageTip } from '@/lib/gemini';
+import { analyzeTip, transcribeAudio, analyzeImageTip, generateFollowUpQuestion } from '@/lib/gemini';
 import { checkRateLimit } from '@/lib/rate-limit';
+import { after } from 'next/server';
 
 interface TelegramMessage {
   message_id: number;
@@ -321,11 +322,7 @@ export async function POST(req: Request) {
         await supabaseAdmin.from('sessions').delete().eq('id', session.id);
       } else {
         // --- NORMAL INTAKE ---
-        // 1. Send Instant Static Follow-up
-        const botMsgId = await sendTelegramMessage(chatId, FOLLOW_UP_PROMPT);
-        
-        // 2. Track all IDs
-        if (botMsgId) messages.push({ role: 'assistant', content: 'PROMPT', message_id: botMsgId });
+        // 1. Record the user message immediately
         pending.push({ role: 'user', content: text, message_id: incomingMessageId, media_url: extractedMediaUrl });
         
         await supabaseAdmin.from('sessions')
@@ -335,6 +332,27 @@ export async function POST(req: Request) {
             last_message_at: new Date().toISOString()
           })
           .eq('id', session.id);
+
+        // 2. Fire and forget the AI follow-up in the background
+        after(async () => {
+          try {
+            console.log(`[Naisha] Generating follow-up for alias: ${alias}`);
+            const aiQuestion = await generateFollowUpQuestion([...messages, ...pending]);
+            
+            const botMsgId = await sendTelegramMessage(chatId!, aiQuestion);
+            
+            if (botMsgId) {
+              const updatedMessages = [...messages, { role: 'assistant', content: aiQuestion, message_id: botMsgId }];
+              await supabaseAdmin.from('sessions')
+                .update({ messages: updatedMessages })
+                .eq('id', session.id);
+            }
+          } catch (aiErr) {
+            console.error('[Naisha] Background generation failed:', aiErr);
+            // Fallback: Send static prompt if AI fails
+            await sendTelegramMessage(chatId!, FOLLOW_UP_PROMPT);
+          }
+        });
       }
     }
 
