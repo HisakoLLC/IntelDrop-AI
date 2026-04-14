@@ -170,6 +170,10 @@ export async function POST(req: Request) {
     }
 
     // --- RATE LIMIT CHECK ---
+    if (!alias) {
+      return NextResponse.json({ status: 'error', message: 'Alias generation failed' }, { status: 200 });
+    }
+
     const { isLimited } = await checkRateLimit(alias);
     if (isLimited) {
       await sendTelegramMessage(chatId, "⚠️ You have reached the message limit for this hour. Please try again later.");
