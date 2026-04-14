@@ -3,7 +3,6 @@ import { useState, useEffect } from 'react'
 import Image from 'next/image'
 import type { Tip } from '@/actions/tips'
 import { updateTipMetadata } from '@/actions/tips'
-import ReplyModal from './ReplyModal'
 
 interface TipDetailModalProps {
   tip: Tip | null

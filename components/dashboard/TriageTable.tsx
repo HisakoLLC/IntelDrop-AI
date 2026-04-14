@@ -123,6 +123,7 @@ export default function TriageTable({ initialTips }: { initialTips: Tip[] }) {
 
       {activeReplyAlias && (
         <ReplyModal 
+          isOpen={!!activeReplyAlias}
           alias={activeReplyAlias} 
           onClose={() => setActiveReplyAlias(null)} 
         />
