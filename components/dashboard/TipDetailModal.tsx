@@ -8,13 +8,13 @@ import ReplyModal from './ReplyModal'
 interface TipDetailModalProps {
   tip: Tip | null
   onClose: () => void
+  onReply?: (alias: string) => void
 }
 
-export default function TipDetailModal({ tip, onClose }: TipDetailModalProps) {
+export default function TipDetailModal({ tip, onClose, onReply }: TipDetailModalProps) {
   const [status, setStatus] = useState<string>('New')
   const [notes, setNotes] = useState<string>('')
   const [isSaving, setIsSaving] = useState(false)
-  const [isReplyOpen, setIsReplyOpen] = useState(false)
 
   useEffect(() => {
     if (tip) {
@@ -142,7 +142,7 @@ export default function TipDetailModal({ tip, onClose }: TipDetailModalProps) {
 
               <div className="space-y-3 pt-6 border-t border-whisper">
                 <button 
-                  onClick={() => setIsReplyOpen(true)}
+                  onClick={() => onReply ? onReply(tip.alias) : null}
                   className="w-full py-2.5 rounded-[4px] text-[15px] font-bold text-notion-blue bg-notion-blue/5 border border-notion-blue/20 hover:bg-notion-blue/10 transition-all"
                 >
                   Contact Source
@@ -159,12 +159,6 @@ export default function TipDetailModal({ tip, onClose }: TipDetailModalProps) {
           </div>
         </div>
       </div>
-
-      <ReplyModal 
-        isOpen={isReplyOpen} 
-        alias={tip.alias} 
-        onClose={() => setIsReplyOpen(false)} 
-      />
     </>
   )
 }
