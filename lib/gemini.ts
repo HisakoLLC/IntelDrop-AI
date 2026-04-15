@@ -7,10 +7,11 @@ const ai = new GoogleGenAI({
 
 import * as Sentry from "@sentry/nextjs";
 
-// Verified stable model hierarchy (all support generateContent)
+// Verified model chain for @google/genai v1beta SDK
+// All three models confirmed available via generateContent
 const PRIMARY_MODEL = 'gemini-2.0-flash';
-const FALLBACK_1 = 'gemini-1.5-flash';
-const FALLBACK_2 = 'gemini-1.5-pro';
+const FALLBACK_1 = 'gemini-2.0-flash-lite';
+const FALLBACK_2 = 'gemini-2.5-pro-exp-03-25';
 
 interface SessionMessage {
   role: string;
@@ -44,14 +45,16 @@ async function callResilientAI(options: Record<string, any>, attempt = 1): Promi
       const isRetryable = errorMessage.includes('503') || 
                           errorMessage.includes('429') || 
                           errorMessage.includes('UNAVAILABLE');
+      // 404 = model not found — fail immediately, do not retry
+      const isModelNotFound = errorMessage.includes('404') || errorMessage.includes('NOT_FOUND');
       
       // Capture non-retryable errors or final death immediately
-      if (!isRetryable || attempt === 6) {
+      if (!isRetryable || isModelNotFound || attempt === 6) {
         Sentry.captureException(err, { extra: { model: modelToUse, attempt } });
       }
 
-      // Max 6 retries (~60s of persistence)
-      if (isRetryable && attempt < 6) {
+      // Max 6 retries (~60s of persistence) — skip for 404s
+      if (isRetryable && !isModelNotFound && attempt < 6) {
         const delay = Math.pow(2, attempt) * 1000;
         console.warn(`[AI] ${modelToUse} busy or throttled. Retrying in ${delay}ms...`);
         await new Promise(resolve => setTimeout(resolve, delay));
