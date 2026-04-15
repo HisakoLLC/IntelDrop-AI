@@ -163,37 +163,39 @@ export default function TipDetailModal({ tip, onClose, onReply, onUpdate }: TipD
                 </div>
               </section>
 
-              <div className="space-y-3 pt-6 border-t border-whisper">
+              <div className="flex flex-col gap-3 pt-6 border-t border-whisper">
                 <button 
                   onClick={() => onReply ? onReply(tip.alias) : null}
-                  className="w-full py-2.5 rounded-[4px] text-[15px] font-bold text-notion-blue bg-notion-blue/5 border border-notion-blue/20 hover:bg-notion-blue/10 transition-all"
+                  className="w-full py-2.5 rounded-[4px] text-[15px] font-bold text-notion-blue bg-notion-blue/5 border border-notion-blue/20 hover:bg-notion-blue/10 transition-all box-border"
                 >
                   Contact Source
                 </button>
                 <button 
                   onClick={handleSave}
                   disabled={isSaving}
-                  className="w-full bg-notion-blue text-white py-2.5 rounded-[4px] text-[15px] font-bold hover:bg-[#005bab] transition-all transform active:scale-[0.98] shadow-md shadow-notion-blue/10 disabled:opacity-50"
+                  className="w-full bg-notion-blue text-white py-2.5 rounded-[4px] text-[15px] font-bold border border-transparent hover:bg-[#005bab] transition-all transform active:scale-[0.98] shadow-md shadow-notion-blue/10 disabled:opacity-50 box-border"
                 >
                   {isSaving ? 'Saving...' : 'Update Report'}
                 </button>
 
-                <button 
-                  onClick={handleRevoke}
-                  disabled={isRevoking}
-                  className={`w-full py-2.5 text-[15px] font-bold transition-all rounded-[4px] border ${
-                    showRevokeConfirm 
-                      ? 'bg-red-600 text-white border-red-700 hover:bg-red-700 shadow-md shadow-red-600/20' 
-                      : 'bg-red-50 border-red-200 text-red-600 hover:bg-red-100'
-                  }`}
-                >
-                  {isRevoking ? 'Revoking...' : showRevokeConfirm ? 'Click to Confirm Revoke' : 'Revoke Source Access'}
-                </button>
-                {showRevokeConfirm && (
-                  <p className="text-[11px] text-red-600/80 mt-2 text-center leading-tight">
-                    CAUTION: This permanently severs all identifying links for this alias.
-                  </p>
-                )}
+                <div className="flex flex-col items-center">
+                  <button 
+                    onClick={handleRevoke}
+                    disabled={isRevoking}
+                    className={`w-full py-2.5 text-[15px] font-bold transition-all rounded-[4px] border box-border ${
+                      showRevokeConfirm 
+                        ? 'bg-red-600 text-white border-red-700 hover:bg-red-700 shadow-md shadow-red-600/20' 
+                        : 'bg-transparent border-transparent text-warm-gray-300 hover:text-red-600 hover:bg-red-50 hover:border-red-100'
+                    }`}
+                  >
+                    {isRevoking ? 'Revoking...' : showRevokeConfirm ? 'Click to Confirm Revoke' : 'Revoke Source Access'}
+                  </button>
+                  {showRevokeConfirm && (
+                    <p className="text-[11px] text-red-600/80 mt-2 text-center leading-tight">
+                      CAUTION: This permanently severs all identifying links for this alias.
+                    </p>
+                  )}
+                </div>
               </div>
             </aside>
           </div>
