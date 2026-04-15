@@ -17,20 +17,22 @@ export default function LandingPage() {
   return (
     <div className="min-h-screen bg-white text-notion-black selection:bg-notion-blue selection:text-white antialiased">
       {/* 🧭 NAVIGATION */}
-      <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-whisper px-6 py-4 flex justify-between items-center max-w-[1440px] mx-auto">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-black rounded-sm flex items-center justify-center text-white font-bold text-xl">I</div>
-          <span className="text-lg font-bold tracking-tight">IntelDrop AI</span>
-        </div>
-        <div className="flex items-center gap-4">
-          <a href="/login" className="text-[14px] font-bold text-warm-gray-500 hover:text-black transition-colors hidden sm:block">Login</a>
-          <a href="/dashboard" className="text-[14px] font-bold text-notion-blue hover:underline hidden sm:block">Dashboard</a>
-          <button 
-            onClick={scrollToForm}
-            className="bg-notion-blue text-white px-4 py-2 rounded-[4px] text-[14px] font-bold hover:bg-[#005bab] transition-all transform active:scale-95 shadow-sm"
-          >
-            Request a Demo
-          </button>
+      <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-whisper">
+        <div className="px-6 py-4 flex justify-between items-center max-w-[1240px] mx-auto">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 bg-black rounded-sm flex items-center justify-center text-white font-bold text-xl">I</div>
+            <span className="text-lg font-bold tracking-tight">IntelDrop AI</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <a href="/login" className="text-[14px] font-bold text-warm-gray-500 hover:text-black hover:bg-black/5 px-3 py-2 rounded-[4px] transition-colors hidden sm:flex items-center justify-center">Login</a>
+            <a href="/dashboard" className="text-[14px] font-bold text-notion-black hover:bg-black/5 px-3 py-2 rounded-[4px] transition-colors hidden sm:flex items-center justify-center">Dashboard</a>
+            <button 
+              onClick={scrollToForm}
+              className="bg-notion-blue text-white px-4 py-2 rounded-[4px] text-[14px] font-bold hover:bg-[#005bab] transition-all transform active:scale-95 shadow-sm ml-2"
+            >
+              Request a Demo
+            </button>
+          </div>
         </div>
       </nav>
       <main className="selection:bg-notion-blue selection:text-white">

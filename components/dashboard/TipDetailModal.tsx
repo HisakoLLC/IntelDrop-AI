@@ -178,24 +178,22 @@ export default function TipDetailModal({ tip, onClose, onReply, onUpdate }: TipD
                   {isSaving ? 'Saving...' : 'Update Report'}
                 </button>
 
-                <div className="pt-4 mt-4 border-t border-whisper">
-                  <button 
-                    onClick={handleRevoke}
-                    disabled={isRevoking}
-                    className={`w-full py-2 text-[12px] font-bold transition-all rounded-[4px] ${
-                      showRevokeConfirm 
-                        ? 'bg-red-50 text-red-600 border border-red-100 hover:bg-red-100' 
-                        : 'text-warm-gray-300 hover:text-red-600 hover:bg-red-50'
-                    }`}
-                  >
-                    {isRevoking ? 'Revoking...' : showRevokeConfirm ? 'Click to Confirm Revoke' : 'Revoke Source Access'}
-                  </button>
-                  {showRevokeConfirm && (
-                    <p className="text-[10px] text-red-600/60 mt-2 text-center leading-tight">
-                      CAUTION: This permanently severs all identifying links for this alias.
-                    </p>
-                  )}
-                </div>
+                <button 
+                  onClick={handleRevoke}
+                  disabled={isRevoking}
+                  className={`w-full py-2.5 text-[15px] font-bold transition-all rounded-[4px] border ${
+                    showRevokeConfirm 
+                      ? 'bg-red-600 text-white border-red-700 hover:bg-red-700 shadow-md shadow-red-600/20' 
+                      : 'bg-red-50 border-red-200 text-red-600 hover:bg-red-100'
+                  }`}
+                >
+                  {isRevoking ? 'Revoking...' : showRevokeConfirm ? 'Click to Confirm Revoke' : 'Revoke Source Access'}
+                </button>
+                {showRevokeConfirm && (
+                  <p className="text-[11px] text-red-600/80 mt-2 text-center leading-tight">
+                    CAUTION: This permanently severs all identifying links for this alias.
+                  </p>
+                )}
               </div>
             </aside>
           </div>
