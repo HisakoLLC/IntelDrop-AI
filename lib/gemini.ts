@@ -1,16 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { GoogleGenAI } from '@google/genai';
+import * as Sentry from '@sentry/nextjs';
 
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY,
-});
-
-import * as Sentry from "@sentry/nextjs";
-
-// Using -latest aliases so models never 404 — Google auto-resolves to current stable
-const PRIMARY_MODEL = 'gemini-2.0-flash';          // Already resolves to latest 2.0 flash
-const FALLBACK_1 = 'gemini-1.5-flash-latest';       // Always current 1.5 flash stable
-const FALLBACK_2 = 'gemini-1.5-pro-latest';         // Final backstop — always available
+// Direct REST API — bypasses @google/genai SDK v1beta routing issues
+// These model names are confirmed valid at the v1 REST endpoint
+const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
+const PRIMARY_MODEL = 'gemini-2.0-flash';
+const FALLBACK_MODEL = 'gemini-2.0-flash-lite';
 
 interface SessionMessage {
   role: string;
@@ -20,51 +15,63 @@ interface SessionMessage {
 }
 
 /**
- * Resilient wrapper for AI calls with exponential backoff and multi-tier model fallback.
+ * Direct REST call to Gemini API with retry logic.
+ * Avoids @google/genai SDK model routing issues entirely.
  */
-async function callResilientAI(options: Record<string, any>, attempt = 1): Promise<any> {
-  // Rotate through models as attempts fail
-  let modelToUse = PRIMARY_MODEL;
-  if (attempt === 2) modelToUse = FALLBACK_1;
-  if (attempt >= 3) modelToUse = FALLBACK_2;
-  
-  return await Sentry.startSpan({ 
-    name: "callResilientAI", 
-    op: "ai.generate",
-    attributes: { model: modelToUse, attempt } 
-  }, async () => {
-    try {
-      console.log(`[AI] Attempt ${attempt}/6 using ${modelToUse}...`);
-      return await ai.models.generateContent({
-        ...options,
-        model: modelToUse
-      } as any);
-    } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      const isRetryable = errorMessage.includes('503') || 
-                          errorMessage.includes('429') || 
-                          errorMessage.includes('UNAVAILABLE');
-      // 404 = model not found — fail immediately, do not retry
-      const isModelNotFound = errorMessage.includes('404') || errorMessage.includes('NOT_FOUND');
-      
-      // Capture non-retryable errors or final death immediately
-      if (!isRetryable || isModelNotFound || attempt === 6) {
-        Sentry.captureException(err, { extra: { model: modelToUse, attempt } });
-      }
+async function callGemini(
+  model: string,
+  body: Record<string, any>,
+  attempt = 1
+): Promise<any> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error('GEMINI_API_KEY is not set');
 
-      // Max 6 retries (~60s of persistence) — skip for 404s
-      if (isRetryable && !isModelNotFound && attempt < 6) {
-        const delay = Math.pow(2, attempt) * 1000;
-        console.warn(`[AI] ${modelToUse} busy or throttled. Retrying in ${delay}ms...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
-        return callResilientAI(options, attempt + 1);
-      }
-      throw err;
-    }
+  console.log(`[AI] Attempt ${attempt}/4 using ${model}...`);
+
+  const url = `${GEMINI_API_BASE}/${model}:generateContent?key=${apiKey}`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
   });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    const isThrottled = res.status === 429 || res.status === 503;
+
+    // If throttled and retries remain, wait and retry the SAME model
+    if (isThrottled && attempt < 3) {
+      const delay = attempt * 3000;
+      console.warn(`[AI] ${model} throttled (${res.status}). Retrying in ${delay}ms...`);
+      await new Promise(r => setTimeout(r, delay));
+      return callGemini(model, body, attempt + 1);
+    }
+
+    // If primary model exhausted, try fallback once
+    if (attempt >= 3 && model === PRIMARY_MODEL) {
+      console.warn(`[AI] Primary model exhausted. Switching to ${FALLBACK_MODEL}...`);
+      return callGemini(FALLBACK_MODEL, body, 1);
+    }
+
+    Sentry.captureException(new Error(`Gemini ${model} error ${res.status}: ${errText}`));
+    throw new Error(`Gemini API error ${res.status}: ${errText}`);
+  }
+
+  return res.json();
 }
 
-const SYSTEM_PROMPT = `You are the lead intelligence intake officer for IntelDrop. 
+/**
+ * Parse the text from a Gemini REST response.
+ */
+function extractText(response: any): string {
+  return response?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+}
+
+// ─────────────────────────────────────────────
+// PROMPTS
+// ─────────────────────────────────────────────
+
+const SYSTEM_PROMPT = `You are the lead intelligence intake officer for IntelDrop.
 Your goal is to perform "Multimodal Triage" on whistleblower reports.
 Return ONLY valid JSON in this format:
 {
@@ -84,81 +91,81 @@ Ask ONE focused follow-up question at a time. Be concise but always write comple
 NEVER end a message mid-sentence or mid-word. Always complete your thought before ending.
 If they say they are done, thank them and inform them the chat will be securely wiped.`;
 
-export async function generateFollowUpQuestion(messages: SessionMessage[]) {
+// ─────────────────────────────────────────────
+// EXPORTED FUNCTIONS
+// ─────────────────────────────────────────────
+
+export async function generateFollowUpQuestion(messages: SessionMessage[]): Promise<string> {
   // Filter out internal sentinel strings that would confuse the model
-  const filteredMessages = messages.filter(
+  const filtered = messages.filter(
     m => m.content && m.content !== 'WELCOME' && m.content !== 'PROMPT'
   );
 
-  const squashedContents = filteredMessages.map(m => ({
+  const contents = filtered.map(m => ({
     role: m.role === 'assistant' ? 'model' : 'user',
-    parts: [{ text: m.content || '[Media Content]' }]
+    parts: [{ text: m.content || '[Media Content]' }],
   }));
 
-  // Ensure conversation starts with a user turn (Gemini requirement)
-  if (squashedContents.length === 0 || squashedContents[0].role !== 'user') {
-    squashedContents.unshift({ role: 'user', parts: [{ text: 'I have information to report.' }] });
+  // Gemini requires conversation to start with a user turn
+  if (contents.length === 0 || contents[0].role !== 'user') {
+    contents.unshift({ role: 'user', parts: [{ text: 'I have information to report.' }] });
   }
 
-  const result: any = await callResilientAI({
-    contents: squashedContents,
-    config: {
-      systemInstruction: CONVERSATION_PROMPT,
-      temperature: 0.6,
-      maxOutputTokens: 300,
+  try {
+    const response = await callGemini(PRIMARY_MODEL, {
+      system_instruction: { parts: [{ text: CONVERSATION_PROMPT }] },
+      contents,
+      generationConfig: { temperature: 0.6, maxOutputTokens: 300 },
+    });
+
+    const raw = extractText(response).trim();
+    if (!raw || raw.length < 5) {
+      return 'Thank you. Can you share any additional details about this incident?';
     }
-  });
-
-  const raw = result.candidates?.[0]?.content?.parts?.[0]?.text || '';
-  // Safety net: if the response is empty or very short, fall back to a safe prompt
-  if (!raw || raw.trim().length < 5) {
-    return 'Thank you. Can you share any additional details about this incident?';
+    return raw;
+  } catch (err) {
+    console.error('[Naisha] Follow-up generation failed:', err);
+    return 'Thank you for sharing. Can you provide any additional details?';
   }
-  return raw.trim();
 }
 
-export async function analyzeTip(rawText: string) {
-  const result: any = await callResilientAI({
+export async function analyzeTip(rawText: string): Promise<any> {
+  const response = await callGemini(PRIMARY_MODEL, {
+    system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
     contents: [{ role: 'user', parts: [{ text: rawText }] }],
-    config: {
-      systemInstruction: SYSTEM_PROMPT,
-      responseMimeType: 'application/json'
-    }
+    generationConfig: { responseMimeType: 'application/json' },
   });
 
   try {
-    return JSON.parse(result.candidates?.[0]?.content?.parts?.[0]?.text || '{}');
+    const raw = extractText(response);
+    return JSON.parse(raw || '{}');
   } catch {
     return { category: 'Other', priority: 'Medium', summary: 'Failed to parse triage JSON' };
   }
 }
 
 export async function transcribeAudio(base64Audio: string, mimeType: string): Promise<string> {
-  const result: any = await callResilientAI({
-    contents: [
-      {
-        role: 'user',
-        parts: [
-          { inlineData: { mimeType, data: base64Audio } },
-          { text: "Transcribe this audio exactly. If it's not clear, summarize what you can hear." }
-        ]
-      }
-    ]
+  const response = await callGemini(PRIMARY_MODEL, {
+    contents: [{
+      role: 'user',
+      parts: [
+        { inline_data: { mime_type: mimeType, data: base64Audio } },
+        { text: "Transcribe this audio exactly. If it's not clear, summarize what you can hear." },
+      ],
+    }],
   });
-  return result.candidates?.[0]?.content?.parts?.[0]?.text || "";
+  return extractText(response);
 }
 
 export async function analyzeImageTip(base64Image: string, mimeType: string): Promise<string> {
-  const result: any = await callResilientAI({
-    contents: [
-      {
-        role: 'user',
-        parts: [
-          { inlineData: { mimeType, data: base64Image } },
-          { text: "Describe this image in the context of a whistleblower report. What evidence is visible?" }
-        ]
-      }
-    ]
+  const response = await callGemini(PRIMARY_MODEL, {
+    contents: [{
+      role: 'user',
+      parts: [
+        { inline_data: { mime_type: mimeType, data: base64Image } },
+        { text: 'Describe this image in the context of a whistleblower report. What evidence is visible?' },
+      ],
+    }],
   });
-  return result.candidates?.[0]?.content?.parts?.[0]?.text || "[Visual Content]";
+  return extractText(response) || '[Visual Content]';
 }
