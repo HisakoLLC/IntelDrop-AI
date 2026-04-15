@@ -6,13 +6,17 @@ import TipDetailModal from './TipDetailModal'
 
 export default function TriageTable({ initialTips }: { initialTips: Tip[] }) {
   const [mounted, setMounted] = useState(false)
-  const [tips] = useState<Tip[]>(initialTips)
+  const [tips, setTips] = useState<Tip[]>(initialTips)
   const [activeReplyAlias, setActiveReplyAlias] = useState<string | null>(null)
   const [selectedTip, setSelectedTip] = useState<Tip | null>(null)
 
   useEffect(() => {
     setMounted(true)
   }, [])
+
+  const handleTipUpdated = (updated: Tip) => {
+    setTips(prev => prev.map(t => t.id === updated.id ? updated : t))
+  }
 
   const getPriorityBadge = (priority: string | null) => {
     const p = priority?.toLowerCase()
@@ -111,9 +115,10 @@ export default function TriageTable({ initialTips }: { initialTips: Tip[] }) {
       </div>
 
       {selectedTip && (
-        <TipDetailModal 
+      <TipDetailModal 
           tip={selectedTip} 
           onClose={() => setSelectedTip(null)}
+          onUpdate={handleTipUpdated}
           onReply={(alias) => {
             setSelectedTip(null);
             setActiveReplyAlias(alias);

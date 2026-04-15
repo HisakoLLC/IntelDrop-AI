@@ -110,6 +110,30 @@ async function deleteTelegramMessage(chatId: string, messageId: number) {
   });
 }
 
+// Helper: Fire Naisha AI follow-up question in background (shared between new and existing sessions)
+async function fireNaishaFollowUp(
+  chatId: string,
+  sessionId: string,
+  messages: SessionMessage[],
+  pending: SessionMessage[]
+) {
+  try {
+    console.log(`[Naisha] Generating follow-up for session: ${sessionId}`);
+    const aiQuestion = await generateFollowUpQuestion([...messages, ...pending]);
+    const botMsgId = await sendTelegramMessage(chatId, aiQuestion);
+    if (botMsgId) {
+      const updatedMessages = [...messages, { role: 'assistant', content: aiQuestion, message_id: botMsgId }];
+      await supabaseAdmin.from('sessions')
+        .update({ messages: updatedMessages })
+        .eq('id', sessionId);
+    }
+  } catch (aiErr) {
+    console.error('[Naisha] Background generation failed:', aiErr);
+    // Fallback: Send static prompt if AI fails
+    await sendTelegramMessage(chatId, FOLLOW_UP_PROMPT);
+  }
+}
+
 export async function POST(req: Request) {
   let body: TelegramUpdate | null = null;
   let alias: string | null = null;
@@ -242,23 +266,27 @@ export async function POST(req: Request) {
         return NextResponse.json({ status: 'no_session' }, { status: 200 });
       }
       
-      // Create session on-the-fly (Ensuring welcome is included if it was sent)
-      const botMsgId = await sendTelegramMessage(chatId, FOLLOW_UP_PROMPT);
-      const messages: SessionMessage[] = [];
-      if (botMsgId) messages.push({ role: 'assistant', content: 'PROMPT', message_id: botMsgId });
-      
+      // Create session on-the-fly
       const pending: SessionMessage[] = [{ role: 'user', content: text, message_id: incomingMessageId, media_url: extractedMediaUrl }];
-      
+      const messages: SessionMessage[] = [];
+
       // Ensure we clean up any old inactive sessions for this alias first
       await supabaseAdmin.from('sessions').delete().eq('alias', alias);
 
-      await supabaseAdmin.from('sessions').insert({
+      const { data: newSession } = await supabaseAdmin.from('sessions').insert({
         alias: alias,
         messages: messages,
         pending_messages: pending,
         status: 'active',
         last_message_at: new Date().toISOString()
-      });
+      }).select('id').single();
+
+      // BUG 2 FIX: Fire Naisha on the very first message, not just subsequent ones
+      if (newSession?.id) {
+        after(async () => {
+          await fireNaishaFollowUp(chatId, newSession.id, messages, pending);
+        });
+      }
     } else {
       // Existing Session
       const messages: SessionMessage[] = (session.messages as any) || [];
@@ -267,12 +295,13 @@ export async function POST(req: Request) {
       if (isDoneTrigger) {
         // --- SUBMISSION & WIPE SEQUENCE ---
         
-        // 1. Send immediate receipt to prevent Telegram Webhook timeout
-        await sendTelegramMessage(chatId, "✅ Your report is being securely processed. The conversation will be wiped momentarily.");
+        // BUG 1/4 FIX: Track the receipt message ID BEFORE firing after(),
+        // so it's captured in the closure and included in the final wipe.
+        const receiptMsgId = await sendTelegramMessage(chatId, "✅ Your report is being securely processed. The conversation will be wiped momentarily.");
 
         after(async () => {
           try {
-            // FRESH FETCH: Ensure we have any operator replies that arrived during this request
+            // FRESH FETCH: Ensure we have the latest session state
             const { data: latestSession } = await supabaseAdmin
               .from('sessions')
               .select('*')
@@ -282,7 +311,7 @@ export async function POST(req: Request) {
             const latestMessages: SessionMessage[] = (latestSession?.messages as any) || messages;
             const latestPending: SessionMessage[] = (latestSession?.pending_messages as any) || pending;
 
-            const combined = [...latestMessages, ...latestPending, { role: 'user', content: text, message_id: incomingMessageId }];
+            const combined = [...latestMessages, ...latestPending];
             
             const compiledText = combined
               .filter(m => m.role === 'user')
@@ -291,7 +320,7 @@ export async function POST(req: Request) {
               
             const mediaUrls = combined.filter(m => m.media_url).map(m => m.media_url);
             
-            // Triage (Gemini) - Move heavy AI work to background
+            // Triage (Gemini) - Heavy AI work in background
             const triage = await analyzeTip(compiledText);
             
             if (triage.category === "Spam / Unrelated") {
@@ -311,14 +340,24 @@ export async function POST(req: Request) {
               });
             }
 
-            // Final deletion loop
-            const goodbyeId = await sendTelegramMessage(chatId, "🔒 Submission finalized. Secure connection terminated.");
-            
+            // Collect ALL message IDs for total wipe
             const allMessageIds = new Set<number>();
+            // Add all tracked messages (bot + user messages accumulated over the session)
             combined.forEach(m => { if (m.message_id) allMessageIds.add(m.message_id); });
+            // Add the 'done' trigger message from the user
+            allMessageIds.add(incomingMessageId);
+            // Add the receipt message sent before after() fired
+            if (receiptMsgId) allMessageIds.add(receiptMsgId);
+
+            // Send goodbye, track it too
+            const goodbyeId = await sendTelegramMessage(chatId, "🔒 Submission finalized. Secure connection terminated.");
             if (goodbyeId) allMessageIds.add(goodbyeId);
 
-            // Physical Annihilation
+            // BUG 4 FIX: Wait 1.5s for Telegram to stabilize all message IDs
+            // before the deletion loop. Rapid deletes fail silently without this.
+            await new Promise(r => setTimeout(r, 1500));
+
+            // Physical Annihilation — delete every tracked message
             for (const mid of Array.from(allMessageIds)) {
               await deleteTelegramMessage(chatId, mid);
             }
@@ -342,25 +381,9 @@ export async function POST(req: Request) {
           })
           .eq('id', session.id);
 
-        // 2. Fire and forget the AI follow-up in the background
+        // 2. Fire Naisha follow-up in background
         after(async () => {
-          try {
-            console.log(`[Naisha] Generating follow-up for alias: ${alias}`);
-            const aiQuestion = await generateFollowUpQuestion([...messages, ...pending]);
-            
-            const botMsgId = await sendTelegramMessage(chatId!, aiQuestion);
-            
-            if (botMsgId) {
-              const updatedMessages = [...messages, { role: 'assistant', content: aiQuestion, message_id: botMsgId }];
-              await supabaseAdmin.from('sessions')
-                .update({ messages: updatedMessages })
-                .eq('id', session.id);
-            }
-          } catch (aiErr) {
-            console.error('[Naisha] Background generation failed:', aiErr);
-            // Fallback: Send static prompt if AI fails
-            await sendTelegramMessage(chatId!, FOLLOW_UP_PROMPT);
-          }
+          await fireNaishaFollowUp(chatId, session.id, messages, pending);
         });
       }
     }

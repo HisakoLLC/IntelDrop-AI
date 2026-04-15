@@ -8,9 +8,10 @@ interface TipDetailModalProps {
   tip: Tip | null
   onClose: () => void
   onReply?: (alias: string) => void
+  onUpdate?: (updated: Tip) => void
 }
 
-export default function TipDetailModal({ tip, onClose, onReply }: TipDetailModalProps) {
+export default function TipDetailModal({ tip, onClose, onReply, onUpdate }: TipDetailModalProps) {
   const [status, setStatus] = useState<string>('New')
   const [notes, setNotes] = useState<string>('')
   const [isSaving, setIsSaving] = useState(false)
@@ -31,6 +32,8 @@ export default function TipDetailModal({ tip, onClose, onReply }: TipDetailModal
     setIsSaving(true)
     try {
       await updateTipMetadata(tip.id, status, notes)
+      // Optimistically update parent table without page reload
+      if (onUpdate) onUpdate({ ...tip, status, notes })
       onClose()
     } catch (err) {
       console.error(err)
