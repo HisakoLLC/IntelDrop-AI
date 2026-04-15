@@ -74,30 +74,45 @@ Return ONLY valid JSON in this format:
 }
 If the submission is a greeting, casual conversation, random text, or irrelevant to intelligence, set category to "Spam / Unrelated" and priority to "Spam".`;
 
-const CONVERSATION_PROMPT = `You are "Naisha", the IntelDrop intake officer. 
+const CONVERSATION_PROMPT = `You are "Naisha", the IntelDrop intake officer.
 You are speaking with a whistleblower. They are anonymous and likely stressed.
 Your tone: Professional, empathetic, and security-focused.
-Goal: Gather the WHO, WHAT, WHEN, WHERE, and WHY.
-If information is missing, ask ONE follow-up question at a time.
-Keep responses under 50 words. Do not use your name in every message.
-If they say they are done, thank them and tell them the chat will be wiped.`;
+Goal: Gather the WHO, WHAT, WHEN, WHERE, and WHY of the incident.
+Ask ONE focused follow-up question at a time. Be concise but always write complete sentences.
+NEVER end a message mid-sentence or mid-word. Always complete your thought before ending.
+If they say they are done, thank them and inform them the chat will be securely wiped.`;
 
 export async function generateFollowUpQuestion(messages: SessionMessage[]) {
-  const squashedContents = messages.map(m => ({
+  // Filter out internal sentinel strings that would confuse the model
+  const filteredMessages = messages.filter(
+    m => m.content && m.content !== 'WELCOME' && m.content !== 'PROMPT'
+  );
+
+  const squashedContents = filteredMessages.map(m => ({
     role: m.role === 'assistant' ? 'model' : 'user',
     parts: [{ text: m.content || '[Media Content]' }]
   }));
+
+  // Ensure conversation starts with a user turn (Gemini requirement)
+  if (squashedContents.length === 0 || squashedContents[0].role !== 'user') {
+    squashedContents.unshift({ role: 'user', parts: [{ text: 'I have information to report.' }] });
+  }
 
   const result: any = await callResilientAI({
     contents: squashedContents,
     config: {
       systemInstruction: CONVERSATION_PROMPT,
-      temperature: 0.7,
-      maxOutputTokens: 200,
+      temperature: 0.6,
+      maxOutputTokens: 300,
     }
   });
 
-  return result.candidates?.[0]?.content?.parts?.[0]?.text || "Thank you. Please continue.";
+  const raw = result.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  // Safety net: if the response is empty or very short, fall back to a safe prompt
+  if (!raw || raw.trim().length < 5) {
+    return 'Thank you. Can you share any additional details about this incident?';
+  }
+  return raw.trim();
 }
 
 export async function analyzeTip(rawText: string) {

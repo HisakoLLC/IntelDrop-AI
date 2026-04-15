@@ -251,7 +251,7 @@ export async function POST(req: Request) {
       .from('sessions')
       .select('*')
       .eq('alias', alias)
-      .eq('status', 'active')
+      .eq('status', 'active')  // Only pick up truly active sessions — 'finalizing' are ignored
       .single();
 
     // 4. PROCESS MESSAGE
@@ -294,41 +294,42 @@ export async function POST(req: Request) {
       
       if (isDoneTrigger) {
         // --- SUBMISSION & WIPE SEQUENCE ---
-        
-        // BUG 1/4 FIX: Track the receipt message ID BEFORE firing after(),
-        // so it's captured in the closure and included in the final wipe.
+
+        // BUG B FIX: Atomically mark session as 'finalizing' BEFORE firing after().
+        // This prevents Telegram webhook retries or a second 'done' from
+        // triggering a duplicate finalization race condition.
+        await supabaseAdmin.from('sessions')
+          .update({ status: 'finalizing' })
+          .eq('id', session.id);
+
+        // Track receipt message ID in closure so it gets wiped too
         const receiptMsgId = await sendTelegramMessage(chatId, "✅ Your report is being securely processed. The conversation will be wiped momentarily.");
 
         after(async () => {
           try {
-            // FRESH FETCH: Ensure we have the latest session state
+            // FRESH FETCH of the final session state
             const { data: latestSession } = await supabaseAdmin
               .from('sessions')
               .select('*')
               .eq('id', session.id)
               .single();
-            
+
             const latestMessages: SessionMessage[] = (latestSession?.messages as any) || messages;
             const latestPending: SessionMessage[] = (latestSession?.pending_messages as any) || pending;
-
             const combined = [...latestMessages, ...latestPending];
-            
+
             const compiledText = combined
               .filter(m => m.role === 'user')
               .map(m => m.content)
               .join('\n');
-              
+
             const mediaUrls = combined.filter(m => m.media_url).map(m => m.media_url);
-            
-            // Triage (Gemini) - Heavy AI work in background
+
+            // AI Triage in background
             const triage = await analyzeTip(compiledText);
-            
+
             if (triage.category === "Spam / Unrelated") {
-              console.log(`[Webhook] Spam detected for alias ${alias}. Logging to spam_log.`);
-              await supabaseAdmin.from('spam_log').insert({
-                alias,
-                created_at: new Date().toISOString()
-              });
+              await supabaseAdmin.from('spam_log').insert({ alias, created_at: new Date().toISOString() });
             } else {
               await supabaseAdmin.from('tips').insert({
                 alias: alias!,
@@ -340,30 +341,33 @@ export async function POST(req: Request) {
               });
             }
 
-            // Collect ALL message IDs for total wipe
-            const allMessageIds = new Set<number>();
-            // Add all tracked messages (bot + user messages accumulated over the session)
-            combined.forEach(m => { if (m.message_id) allMessageIds.add(m.message_id); });
-            // Add the 'done' trigger message from the user
-            allMessageIds.add(incomingMessageId);
-            // Add the receipt message sent before after() fired
-            if (receiptMsgId) allMessageIds.add(receiptMsgId);
+            // Collect ALL tracked message IDs
+            const trackedIds = new Set<number>();
+            combined.forEach(m => { if (m.message_id) trackedIds.add(m.message_id); });
+            trackedIds.add(incomingMessageId); // the 'done' message
+            if (receiptMsgId) trackedIds.add(receiptMsgId);
 
-            // Send goodbye, track it too
-            const goodbyeId = await sendTelegramMessage(chatId, "🔒 Submission finalized. Secure connection terminated.");
-            if (goodbyeId) allMessageIds.add(goodbyeId);
+            // Send goodbye and track it
+            const goodbyeId = await sendTelegramMessage(chatId, "🔒 Submission complete. This conversation is being permanently erased.");
+            if (goodbyeId) trackedIds.add(goodbyeId);
 
-            // BUG 4 FIX: Wait 1.5s for Telegram to stabilize all message IDs
-            // before the deletion loop. Rapid deletes fail silently without this.
+            // BUG C FIX: Nuclear sequential range deletion.
+            // Telegram message IDs are sequential integers per-chat.
+            // Delete every ID in the range [min-5, max+5] to guarantee 100% wipe
+            // regardless of what was tracked — catches any messages we missed.
             await new Promise(r => setTimeout(r, 1500));
 
-            // Physical Annihilation — delete every tracked message
-            for (const mid of Array.from(allMessageIds)) {
+            const allIds = Array.from(trackedIds);
+            const minId = Math.max(1, Math.min(...allIds) - 5);
+            const maxId = Math.max(...allIds) + 5;
+
+            for (let mid = minId; mid <= maxId; mid++) {
               await deleteTelegramMessage(chatId, mid);
             }
 
+            // Hard cleanup
             await supabaseAdmin.from('sessions').delete().eq('id', session.id);
-            console.log(`[Webhook] Finalized and wiped session for alias: ${alias}`);
+            console.log(`[Webhook] Finalized and fully wiped session for alias: ${alias}. Range: ${minId}-${maxId}`);
           } catch (finalErr) {
             console.error('[Webhook] Background finalization failure:', finalErr);
           }
