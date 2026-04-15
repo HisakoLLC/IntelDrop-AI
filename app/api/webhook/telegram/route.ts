@@ -306,6 +306,11 @@ export async function POST(req: Request) {
         const receiptMsgId = await sendTelegramMessage(chatId, "✅ Your report is being securely processed. The conversation will be wiped momentarily.");
 
         after(async () => {
+          // Collect tracked IDs up front — wipe runs regardless of AI success
+          const trackedIds = new Set<number>();
+          trackedIds.add(incomingMessageId); // the 'done' message
+          if (receiptMsgId) trackedIds.add(receiptMsgId);
+
           try {
             // FRESH FETCH of the final session state
             const { data: latestSession } = await supabaseAdmin
@@ -318,6 +323,9 @@ export async function POST(req: Request) {
             const latestPending: SessionMessage[] = (latestSession?.pending_messages as any) || pending;
             const combined = [...latestMessages, ...latestPending];
 
+            // Track all message IDs from the session
+            combined.forEach(m => { if (m.message_id) trackedIds.add(m.message_id); });
+
             const compiledText = combined
               .filter(m => m.role === 'user')
               .map(m => m.content)
@@ -325,52 +333,58 @@ export async function POST(req: Request) {
 
             const mediaUrls = combined.filter(m => m.media_url).map(m => m.media_url);
 
-            // AI Triage in background
-            const triage = await analyzeTip(compiledText);
-
-            if (triage.category === "Spam / Unrelated") {
-              await supabaseAdmin.from('spam_log').insert({ alias, created_at: new Date().toISOString() });
-            } else {
+            // AI Triage — isolated in its own try/catch.
+            // If Gemini is down, we save with a fallback category and STILL wipe.
+            try {
+              const triage = await analyzeTip(compiledText);
+              if (triage.category === "Spam / Unrelated") {
+                await supabaseAdmin.from('spam_log').insert({ alias, created_at: new Date().toISOString() });
+              } else {
+                await supabaseAdmin.from('tips').insert({
+                  alias: alias!,
+                  encrypted_content: encryptData(JSON.stringify({ ...triage, raw_source_text: compiledText })),
+                  category: triage.category,
+                  priority: triage.priority,
+                  media_url: mediaUrls[0] || null,
+                  status: 'New'
+                });
+              }
+            } catch (triageErr) {
+              console.error('[Webhook] AI triage failed — saving tip with fallback category:', triageErr);
+              // Save the raw tip anyway so no intelligence is lost
               await supabaseAdmin.from('tips').insert({
                 alias: alias!,
-                encrypted_content: encryptData(JSON.stringify({ ...triage, raw_source_text: compiledText })),
-                category: triage.category,
-                priority: triage.priority,
+                encrypted_content: encryptData(JSON.stringify({ summary: compiledText, raw_source_text: compiledText })),
+                category: 'Other',
+                priority: 'Medium',
                 media_url: mediaUrls[0] || null,
                 status: 'New'
               });
             }
-
-            // Collect ALL tracked message IDs
-            const trackedIds = new Set<number>();
-            combined.forEach(m => { if (m.message_id) trackedIds.add(m.message_id); });
-            trackedIds.add(incomingMessageId); // the 'done' message
-            if (receiptMsgId) trackedIds.add(receiptMsgId);
-
-            // Send goodbye and track it
-            const goodbyeId = await sendTelegramMessage(chatId, "🔒 Submission complete. This conversation is being permanently erased.");
-            if (goodbyeId) trackedIds.add(goodbyeId);
-
-            // BUG C FIX: Nuclear sequential range deletion.
-            // Telegram message IDs are sequential integers per-chat.
-            // Delete every ID in the range [min-5, max+5] to guarantee 100% wipe
-            // regardless of what was tracked — catches any messages we missed.
-            await new Promise(r => setTimeout(r, 1500));
-
-            const allIds = Array.from(trackedIds);
-            const minId = Math.max(1, Math.min(...allIds) - 5);
-            const maxId = Math.max(...allIds) + 5;
-
-            for (let mid = minId; mid <= maxId; mid++) {
-              await deleteTelegramMessage(chatId, mid);
-            }
-
-            // Hard cleanup
-            await supabaseAdmin.from('sessions').delete().eq('id', session.id);
-            console.log(`[Webhook] Finalized and fully wiped session for alias: ${alias}. Range: ${minId}-${maxId}`);
-          } catch (finalErr) {
-            console.error('[Webhook] Background finalization failure:', finalErr);
+          } catch (sessionErr) {
+            console.error('[Webhook] Session fetch failed during finalization:', sessionErr);
           }
+
+          // WIPE RUNS UNCONDITIONALLY — even if AI or DB failed above.
+          // Send goodbye and add it to the tracked set
+          const goodbyeId = await sendTelegramMessage(chatId, '🔒 Submission complete. This conversation is being permanently erased.');
+          if (goodbyeId) trackedIds.add(goodbyeId);
+
+          // Nuclear sequential range deletion.
+          // Telegram message IDs are sequential integers per-chat.
+          // Deleting every ID in range [min-5, max+5] guarantees 100% wipe.
+          await new Promise(r => setTimeout(r, 1500));
+
+          const allIds = Array.from(trackedIds);
+          const minId = Math.max(1, Math.min(...allIds) - 5);
+          const maxId = Math.max(...allIds) + 5;
+
+          for (let mid = minId; mid <= maxId; mid++) {
+            await deleteTelegramMessage(chatId, mid);
+          }
+
+          await supabaseAdmin.from('sessions').delete().eq('id', session.id);
+          console.log(`[Webhook] Session wiped for alias: ${alias}. Range: ${minId}-${maxId}`);
         });
       } else {
         // --- NORMAL INTAKE ---

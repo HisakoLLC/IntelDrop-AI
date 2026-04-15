@@ -7,10 +7,10 @@ const ai = new GoogleGenAI({
 
 import * as Sentry from "@sentry/nextjs";
 
-// 2026 Stable Model Hierarchy
-const PRIMARY_MODEL = 'gemini-2.0-flash-001';
-const FALLBACK_1 = 'gemini-2.5-flash';
-const FALLBACK_2 = 'gemini-3.1-flash-live-preview';
+// Verified stable model hierarchy (all support generateContent)
+const PRIMARY_MODEL = 'gemini-2.0-flash';
+const FALLBACK_1 = 'gemini-1.5-flash';
+const FALLBACK_2 = 'gemini-1.5-pro';
 
 interface SessionMessage {
   role: string;
