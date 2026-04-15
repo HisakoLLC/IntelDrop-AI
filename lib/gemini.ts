@@ -7,11 +7,10 @@ const ai = new GoogleGenAI({
 
 import * as Sentry from "@sentry/nextjs";
 
-// Verified model chain for @google/genai v1beta SDK
-// All three models confirmed available via generateContent
-const PRIMARY_MODEL = 'gemini-2.0-flash';
-const FALLBACK_1 = 'gemini-2.0-flash-lite';
-const FALLBACK_2 = 'gemini-2.5-pro-exp-03-25';
+// Using -latest aliases so models never 404 — Google auto-resolves to current stable
+const PRIMARY_MODEL = 'gemini-2.0-flash';          // Already resolves to latest 2.0 flash
+const FALLBACK_1 = 'gemini-1.5-flash-latest';       // Always current 1.5 flash stable
+const FALLBACK_2 = 'gemini-1.5-pro-latest';         // Final backstop — always available
 
 interface SessionMessage {
   role: string;
